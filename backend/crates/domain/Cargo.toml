@@ -9,9 +9,12 @@ rust-version.workspace = true
 
 # Pure domain crate: entities, value objects, business rules.
 # MUST NOT depend on axum, sqlx, tokio runtime, or any I/O crate.
-# Allowed dependencies: serde, chrono, thiserror only.
+# Allowed dependencies: serde, chrono, thiserror, rust_decimal (no I/O,
+# `no_std`-friendly fixed-precision type — chosen over `f64` for OHLC and
+# volumes since these are money values produced by a `NUMERIC(20,8)` column).
 
 [dependencies]
 serde.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
+rust_decimal.workspace = true
