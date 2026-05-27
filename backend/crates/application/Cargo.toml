@@ -17,6 +17,10 @@ async-trait.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 chrono.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true }
+# Used in unit tests of the orders use case to build `Decimal::ZERO`
+# placeholders without polluting the production dependency surface.
+rust_decimal = { workspace = true }
