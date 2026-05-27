@@ -8,7 +8,11 @@ use tokio::net::TcpListener;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-const BIND_ADDR: &str = "0.0.0.0:3000";
+/// Default bind address for the read-only visualization HTTP API.
+///
+/// Port 3100 is used as the default because the more common port 3000 is
+/// often already occupied by other services on dev machines.
+const BIND_ADDR: &str = "0.0.0.0:3100";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

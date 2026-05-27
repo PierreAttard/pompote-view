@@ -20,7 +20,7 @@ Interface de **visualisation et monitoring live** des stratégies de trading du 
 cd backend
 cargo build
 cargo run -p viz_api
-# → écoute sur http://0.0.0.0:3000 ; tester /healthz
+# → écoute sur http://0.0.0.0:3100 ; tester /healthz
 ```
 
 ### Frontend
