@@ -11,24 +11,23 @@
 
 use axum::{Router, http::StatusCode, middleware, routing::get};
 
-use super::{api_key::require_api_key, handlers, state::AppState};
+use super::{api_key::require_api_key, candles, handlers, state::AppState};
 
 /// Builds the top-level axum router with the shared [`AppState`] attached.
 ///
 /// Routes under `/api/v1/monitoring` are wrapped by the `X-API-Key`
-/// middleware. The monitoring sub-router currently holds only a catch-all
-/// fallback that returns `404 Not Found` — concrete endpoints land with
-/// issues #8 and following. The fallback is required so axum can attach the
-/// middleware to actual route entries (a `route_layer` over an empty router
-/// is a no-op in axum 0.8 and panics at runtime).
+/// middleware. Concrete endpoints (currently: `GET /candles` from issue #8)
+/// are mounted on the monitoring sub-router; the catch-all fallback returns
+/// `404 Not Found` for unknown paths so axum can still attach the middleware
+/// when only one route is registered.
 pub fn build_router(state: AppState) -> Router {
-    let monitoring_router: Router<AppState> =
-        Router::new()
-            .fallback(monitoring_not_found)
-            .layer(middleware::from_fn_with_state(
-                state.clone(),
-                require_api_key,
-            ));
+    let monitoring_router: Router<AppState> = Router::new()
+        .route("/candles", get(candles::get_candles))
+        .fallback(monitoring_not_found)
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_api_key,
+        ));
 
     Router::new()
         .route("/healthz", get(handlers::healthz))
@@ -50,13 +49,17 @@ async fn monitoring_not_found() -> (StatusCode, &'static str) {
 mod tests {
     use std::sync::Arc;
 
-    use application::ports::{HealthCheckError, HealthChecker};
-    use application::use_cases::ReadinessProbe;
+    use application::ports::{
+        CandleQuery, CandleRepository, Clock, HealthCheckError, HealthChecker, RepositoryError,
+    };
+    use application::use_cases::{GetCandles, ReadinessProbe};
     use async_trait::async_trait;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
     };
+    use chrono::{DateTime, Utc};
+    use domain::candle::Candle;
     use tower::ServiceExt;
 
     use super::*;
@@ -70,10 +73,28 @@ mod tests {
         }
     }
 
+    struct EmptyRepo;
+
+    #[async_trait]
+    impl CandleRepository for EmptyRepo {
+        async fn fetch_aggregated(&self, _q: &CandleQuery) -> Result<Vec<Candle>, RepositoryError> {
+            Ok(vec![])
+        }
+    }
+
+    struct UtcNowClock;
+
+    impl Clock for UtcNowClock {
+        fn now(&self) -> DateTime<Utc> {
+            Utc::now()
+        }
+    }
+
     fn test_state() -> AppState {
         AppState {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(AlwaysOk))),
             api_key: Arc::new(b"dev-key-please-change-0123".to_vec()),
+            get_candles: Arc::new(GetCandles::new(Arc::new(EmptyRepo), Arc::new(UtcNowClock))),
         }
     }
 
@@ -110,6 +131,23 @@ mod tests {
                     .header("X-API-Key", "wrong")
                     .body(Body::empty())
                     .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn candles_without_key_is_401() {
+        let app = build_router(test_state());
+        let response = app
+            .oneshot(
+                Request::get(
+                    "/api/v1/monitoring/candles?exchange=binance&symbol=BTC/USDC\
+                     &timeframe=1h&from=2026-05-27T00:00:00Z&to=2026-05-27T05:00:00Z",
+                )
+                .body(Body::empty())
+                .unwrap(),
             )
             .await
             .unwrap();

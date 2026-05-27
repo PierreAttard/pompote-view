@@ -23,8 +23,10 @@ pub async fn readyz(State(state): State<AppState>) -> (StatusCode, &'static str)
 mod tests {
     use std::sync::Arc;
 
-    use application::ports::{HealthCheckError, HealthChecker};
-    use application::use_cases::ReadinessProbe;
+    use application::ports::{
+        CandleQuery, CandleRepository, Clock, HealthCheckError, HealthChecker, RepositoryError,
+    };
+    use application::use_cases::{GetCandles, ReadinessProbe};
     use async_trait::async_trait;
     use axum::{
         Router,
@@ -32,6 +34,8 @@ mod tests {
         http::{Request, StatusCode},
         routing::get,
     };
+    use chrono::{DateTime, Utc};
+    use domain::candle::Candle;
     use tower::ServiceExt;
 
     use super::*;
@@ -54,10 +58,28 @@ mod tests {
         }
     }
 
+    struct EmptyRepo;
+
+    #[async_trait]
+    impl CandleRepository for EmptyRepo {
+        async fn fetch_aggregated(&self, _q: &CandleQuery) -> Result<Vec<Candle>, RepositoryError> {
+            Ok(vec![])
+        }
+    }
+
+    struct UtcNowClock;
+
+    impl Clock for UtcNowClock {
+        fn now(&self) -> DateTime<Utc> {
+            Utc::now()
+        }
+    }
+
     fn router_for(probe: ReadinessProbe) -> Router {
         let state = AppState {
             readiness: Arc::new(probe),
             api_key: Arc::new(b"unused".to_vec()),
+            get_candles: Arc::new(GetCandles::new(Arc::new(EmptyRepo), Arc::new(UtcNowClock))),
         };
         Router::new()
             .route("/healthz", get(healthz))
