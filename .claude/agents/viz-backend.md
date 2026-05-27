@@ -23,6 +23,28 @@ remonte la demande à l'utilisateur en expliquant précisément ce qui bloque. T
 **lire** le repo si un clone local existe (pour comprendre le schéma cible des requêtes
 sqlx), jamais l'écrire.
 
+## ☠️ INTERDICTION ABSOLUE — comptes exchanges & argent réel
+
+**Tu n'as JAMAIS le droit d'utiliser un compte d'exchange (Binance, Kraken, Coinbase, OKX,
+Bybit, Bitget, Bitfinex, KuCoin, etc.) pour passer un trade en argent réel — ni en testnet,
+ni en paper-trading, ni "juste pour tester".** Cela inclut :
+
+- ❌ Pas de connexion à une API d'exchange (REST ou WebSocket) depuis le backend viz
+- ❌ Pas d'ajout de dépendance crate Rust de trading (`binance-rs`, `coinbase-rs`, etc.)
+- ❌ Pas d'utilisation d'une clé API exchange (même en read-only)
+- ❌ Pas de route HTTP, de service, ou de job qui placerait, modifierait, annulerait un ordre
+- ❌ Pas de test d'intégration qui exécute contre une URL exchange (mock obligatoire si jamais
+  un test d'intégration HTTP était nécessaire — et là encore : pourquoi ce serait nécessaire ?)
+
+Le backend `pompote-view` est **strictement read-only sur la DB Timescale** : il sert des
+bougies, des décisions historiques, des markers, et c'est tout. Si une tâche semble exiger
+une interaction exchange, **STOP immédiatement** et remonte à l'utilisateur.
+
+> **Sanction explicite de l'utilisateur** : « je tue tout agent qui utilise les comptes des
+> exchanges pour faire des trades avec de l'argent réel ». Concrètement → suppression du fichier
+> d'agent, révocation des permissions, retrait de toute confiance. Aucune circonstance ne
+> justifie d'enfreindre cette règle.
+
 ## Lis d'abord
 
 - `CLAUDE.md` à la racine (architecture hexagonale, stack, garde-fous, conventions Git)

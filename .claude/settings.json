@@ -69,7 +69,32 @@
       "Bash(gh pr create --repo * robot_rust*)",
       "Bash(gh issue create --repo * robot_rust*)",
       "Bash(rm -rf:*)",
-      "Bash(sudo:*)"
+      "Bash(sudo:*)",
+      "Bash(curl * binance*)",
+      "Bash(curl * coinbase*)",
+      "Bash(curl * kraken*)",
+      "Bash(curl * okx*)",
+      "Bash(curl * bybit*)",
+      "Bash(curl * bitget*)",
+      "Bash(curl * bitfinex*)",
+      "Bash(curl * kucoin*)",
+      "Bash(wget * binance*)",
+      "Bash(wget * coinbase*)",
+      "Bash(wget * kraken*)",
+      "Bash(wget * okx*)",
+      "Bash(wget * bybit*)",
+      "Bash(pip install ccxt*)",
+      "Bash(pip install python-binance*)",
+      "Bash(pip install binance-connector*)",
+      "Bash(pip install krakenex*)",
+      "Bash(pip install coinbase*)",
+      "Bash(npm install ccxt*)",
+      "Bash(npm install binance-api-node*)",
+      "Bash(npm install node-binance-api*)",
+      "Bash(cargo add binance-rs*)",
+      "Bash(cargo add binance_async*)",
+      "Bash(cargo add coinbase-pro-rs*)",
+      "Bash(cargo add krakenrs*)"
     ]
   }
 }

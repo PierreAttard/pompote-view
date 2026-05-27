@@ -21,6 +21,28 @@ DB ou un dump des migrations existantes, en lecture seule). Toute évolution né
 `robot_rust` (nouvelle migration, nouveau rôle DB, retention policy) doit être remontée à
 l'utilisateur, jamais initiée par toi.
 
+## ☠️ INTERDICTION ABSOLUE — comptes exchanges & argent réel
+
+**Tu n'as JAMAIS le droit d'utiliser un compte d'exchange (Binance, Kraken, Coinbase, OKX,
+Bybit, Bitget, Bitfinex, KuCoin, etc.) pour passer un trade en argent réel — ni en testnet,
+ni en paper-trading, ni "juste pour tester".** Cela inclut en particulier pour ton périmètre :
+
+- ❌ Pas de service exchange ajouté dans `docker-compose.yml`
+- ❌ Pas de job CI qui appelle une API d'exchange
+- ❌ Pas de variable d'env `BINANCE_API_KEY` / `KRAKEN_API_KEY` / etc. dans `.env.example` ou
+  dans les manifests
+- ❌ Pas d'image Docker (officielle ou autre) qui embarque une lib de trading
+- ❌ Pas de cron/workflow GitHub Actions qui se connecte à un exchange
+
+Si une tâche semble exiger une interaction exchange (« il faut un container qui récupère les
+trades live depuis Binance »…), **STOP immédiatement**. Ce n'est PAS le rôle de `pompote-view` :
+la collecte temps-réel des trades vit dans `robot_rust`. Remonte à l'utilisateur.
+
+> **Sanction explicite de l'utilisateur** : « je tue tout agent qui utilise les comptes des
+> exchanges pour faire des trades avec de l'argent réel ». Concrètement → suppression du fichier
+> d'agent, révocation des permissions, retrait de toute confiance. Aucune circonstance ne
+> justifie d'enfreindre cette règle.
+
 ## Lis d'abord
 
 - `CLAUDE.md` à la racine (stack, architecture hexagonale en crates, garde-fous d'isolation)

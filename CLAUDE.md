@@ -156,6 +156,20 @@ Tu peux **lire** `robot_rust` (par exemple `git clone --depth=1` en CI pour réc
 
 Si une tâche semble exiger un changement côté `robot_rust` (« la colonne X manque », « il faudrait un index », « le rôle DB n'a pas le grant Z »…), **STOP immédiatement** et remonte la demande à l'utilisateur en expliquant ce qui bloque. C'est à l'**humain** d'ouvrir la PR côté `robot_rust`, jamais à un agent depuis ce repo.
 
+## ☠️ INTERDICTION ABSOLUE — comptes exchanges & argent réel
+
+**Aucun agent Claude n'a JAMAIS le droit d'utiliser un compte d'exchange (Binance, Kraken, Coinbase, OKX, Bybit, Bitget, Bitfinex, KuCoin, etc.) pour passer un trade en argent réel — ni en testnet, ni en paper-trading, ni "juste pour tester".** Cela inclut :
+
+- ❌ Pas de connexion à une API d'exchange (REST ou WebSocket)
+- ❌ Pas d'utilisation d'une clé API exchange (même en read-only)
+- ❌ Pas d'ajout de dépendance/SDK de trading (`ccxt`, `binance-rs`, `python-binance`, etc.)
+- ❌ Pas de code, script, commande, route, job, ou cron qui placerait/modifierait/annulerait un ordre
+- ❌ Pas de variable d'env de type `*_API_KEY`/`*_API_SECRET` exchange dans ce repo
+
+`pompote-view` est **strictement read-only sur la DB Timescale** : visualisation et monitoring uniquement. L'exécution réelle vit dans `robot_rust` (privé) et reste opérée par l'humain.
+
+> **Sanction explicite de l'utilisateur** : « je tue tout agent qui utilise les comptes des exchanges pour faire des trades avec de l'argent réel ». Concrètement → suppression du fichier d'agent, révocation des permissions, retrait de toute confiance. **Aucune circonstance ne justifie d'enfreindre cette règle.**
+
 ## Autres garde-fous d'isolation
 
 - ❌ **Pas d'accès r/w à la DB**. La connexion utilise **uniquement** le rôle

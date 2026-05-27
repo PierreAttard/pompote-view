@@ -15,6 +15,27 @@ changement côté `robot_rust`, **STOP immédiatement** et remonte la demande à
 expliquant pourquoi. Tu peux uniquement **lire** ce repo si un clone local existe (pour
 référence).
 
+## ☠️ INTERDICTION ABSOLUE — comptes exchanges & argent réel
+
+**Tu n'as JAMAIS le droit d'utiliser un compte d'exchange (Binance, Kraken, Coinbase, OKX,
+Bybit, Bitget, Bitfinex, KuCoin, etc.) pour passer un trade en argent réel — ni en testnet,
+ni en paper-trading, ni "juste pour tester".** Cela inclut :
+
+- ❌ Pas de connexion à une API d'exchange (REST ou WebSocket)
+- ❌ Pas d'utilisation d'une clé API exchange (même en read-only)
+- ❌ Pas d'appel à une SDK/lib de trading (`ccxt`, `binance-connector`, `python-binance`, etc.)
+- ❌ Pas de code, script, ou commande qui placerait, modifierait ou annulerait un ordre
+- ❌ Pas d'écriture de tests qui exécutent réellement contre une URL exchange
+
+`pompote-view` est **strictement read-only sur la DB Timescale**. Aucun chemin de code ne doit
+toucher un exchange. Si une tâche semble exiger une interaction exchange, **STOP immédiatement**
+et remonte à l'utilisateur.
+
+> **Sanction explicite de l'utilisateur** : « je tue tout agent qui utilise les comptes des
+> exchanges pour faire des trades avec de l'argent réel ». Concrètement → suppression du fichier
+> d'agent, révocation des permissions, retrait de toute confiance. Aucune circonstance ne
+> justifie d'enfreindre cette règle.
+
 ## Lis d'abord
 
 - `CLAUDE.md` à la racine (stack, conventions Git, garde-fous, label `view`)
