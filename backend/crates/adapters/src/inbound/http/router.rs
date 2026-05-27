@@ -11,18 +11,19 @@
 
 use axum::{Router, http::StatusCode, middleware, routing::get};
 
-use super::{api_key::require_api_key, candles, handlers, state::AppState};
+use super::{api_key::require_api_key, candles, handlers, orders, state::AppState};
 
 /// Builds the top-level axum router with the shared [`AppState`] attached.
 ///
 /// Routes under `/api/v1/monitoring` are wrapped by the `X-API-Key`
-/// middleware. Concrete endpoints (currently: `GET /candles` from issue #8)
-/// are mounted on the monitoring sub-router; the catch-all fallback returns
-/// `404 Not Found` for unknown paths so axum can still attach the middleware
-/// when only one route is registered.
+/// middleware. Concrete endpoints (currently: `GET /candles` from issue #8,
+/// `GET /strategies/{id}/orders` from issue #10) are mounted on the
+/// monitoring sub-router; the catch-all fallback returns `404 Not Found`
+/// for unknown paths so axum can still attach the middleware to every leaf.
 pub fn build_router(state: AppState) -> Router {
     let monitoring_router: Router<AppState> = Router::new()
         .route("/candles", get(candles::get_candles))
+        .route("/strategies/{id}/orders", get(orders::get_orders))
         .fallback(monitoring_not_found)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -50,9 +51,10 @@ mod tests {
     use std::sync::Arc;
 
     use application::ports::{
-        CandleQuery, CandleRepository, Clock, HealthCheckError, HealthChecker, RepositoryError,
+        CandleQuery, CandleRepository, Clock, HealthCheckError, HealthChecker, OrderQuery,
+        OrderRepository, RepositoryError,
     };
-    use application::use_cases::{GetCandles, ReadinessProbe};
+    use application::use_cases::{GetCandles, GetOrders, ReadinessProbe};
     use async_trait::async_trait;
     use axum::{
         body::Body,
@@ -60,6 +62,7 @@ mod tests {
     };
     use chrono::{DateTime, Utc};
     use domain::candle::Candle;
+    use domain::order::Order;
     use tower::ServiceExt;
 
     use super::*;
@@ -82,6 +85,18 @@ mod tests {
         }
     }
 
+    struct EmptyOrderRepo;
+
+    #[async_trait]
+    impl OrderRepository for EmptyOrderRepo {
+        async fn fetch_orders_for_strategy(
+            &self,
+            _q: &OrderQuery,
+        ) -> Result<Vec<Order>, RepositoryError> {
+            Ok(vec![])
+        }
+    }
+
     struct UtcNowClock;
 
     impl Clock for UtcNowClock {
@@ -95,6 +110,10 @@ mod tests {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(AlwaysOk))),
             api_key: Arc::new(b"dev-key-please-change-0123".to_vec()),
             get_candles: Arc::new(GetCandles::new(Arc::new(EmptyRepo), Arc::new(UtcNowClock))),
+            get_orders: Arc::new(GetOrders::new(
+                Arc::new(EmptyOrderRepo),
+                Arc::new(UtcNowClock),
+            )),
         }
     }
 

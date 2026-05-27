@@ -19,6 +19,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use domain::candle::{CandleQueryError, MAX_CANDLE_POINTS, Timeframe};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use application::ports::RepositoryError;
 use application::use_cases::{GetCandlesError, GetCandlesInput};
@@ -30,7 +31,7 @@ use super::state::AppState;
 /// Strings (`exchange`, `symbol`, `timeframe`) are not parsed/validated at
 /// extraction time — that happens inside the handler so each failure mode
 /// maps to a precise JSON error body.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct CandleQueryParams {
     /// Exchange identifier as stored in `candles_5s.exchange`.
     pub exchange: String,
@@ -53,7 +54,7 @@ pub struct CandleQueryParams {
 /// pixel resolution. The full-precision `Decimal` stays in the domain and the
 /// persistence layer — only this struct loses precision, and it is the only
 /// place that does.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CandleDto {
     /// Bucket start, RFC3339 (e.g. `2026-05-27T14:00:00Z`).
     pub ts: DateTime<Utc>,
@@ -90,21 +91,26 @@ impl From<domain::candle::Candle> for CandleDto {
     }
 }
 
-/// JSON error body returned on 4xx / 5xx.
-#[derive(Debug, Serialize)]
-struct ErrorBody {
-    error: &'static str,
+/// JSON error body returned on 4xx / 5xx by the candles endpoint.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CandleErrorBody {
+    /// Machine-readable error discriminator (e.g. `invalid_timeframe`).
+    pub error: &'static str,
+    /// Human-readable explanation (optional).
     #[serde(skip_serializing_if = "Option::is_none")]
-    message: Option<String>,
+    pub message: Option<String>,
+    /// Echoes the caller-supplied bucket count for `too_many_points`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    requested: Option<usize>,
+    pub requested: Option<usize>,
+    /// Maximum bucket count accepted by the endpoint for `too_many_points`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    max: Option<usize>,
+    pub max: Option<usize>,
+    /// Whitelisted `timeframe` values, surfaced for `invalid_timeframe`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    allowed: Option<&'static [&'static str]>,
+    pub allowed: Option<&'static [&'static str]>,
 }
 
-impl ErrorBody {
+impl CandleErrorBody {
     fn simple(error: &'static str, message: impl Into<String>) -> Self {
         Self {
             error,
@@ -136,7 +142,7 @@ impl IntoResponse for CandlesApiError {
         match self {
             Self::InvalidTimeframe { input } => (
                 StatusCode::BAD_REQUEST,
-                Json(ErrorBody {
+                Json(CandleErrorBody {
                     error: "invalid_timeframe",
                     message: Some(format!("`{input}` is not a supported timeframe")),
                     requested: None,
@@ -147,7 +153,7 @@ impl IntoResponse for CandlesApiError {
                 .into_response(),
             Self::InvalidRange => (
                 StatusCode::BAD_REQUEST,
-                Json(ErrorBody::simple(
+                Json(CandleErrorBody::simple(
                     "invalid_range",
                     "`from` must be strictly before `to`",
                 )),
@@ -155,7 +161,7 @@ impl IntoResponse for CandlesApiError {
                 .into_response(),
             Self::TooManyPoints { requested } => (
                 StatusCode::BAD_REQUEST,
-                Json(ErrorBody {
+                Json(CandleErrorBody {
                     error: "too_many_points",
                     message: Some(format!(
                         "requested {requested} buckets, max {MAX_CANDLE_POINTS}"
@@ -170,7 +176,7 @@ impl IntoResponse for CandlesApiError {
                 tracing::warn!(error = %detail, "candles repository unavailable");
                 (
                     StatusCode::SERVICE_UNAVAILABLE,
-                    Json(ErrorBody::simple(
+                    Json(CandleErrorBody::simple(
                         "service_unavailable",
                         "candle datastore is temporarily unreachable",
                     )),
@@ -181,7 +187,10 @@ impl IntoResponse for CandlesApiError {
                 tracing::error!(error = %detail, "candles handler internal error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorBody::simple("internal_error", "internal server error")),
+                    Json(CandleErrorBody::simple(
+                        "internal_error",
+                        "internal server error",
+                    )),
                 )
                     .into_response()
             }
@@ -206,6 +215,22 @@ impl From<GetCandlesError> for CandlesApiError {
 }
 
 /// Handler for `GET /api/v1/monitoring/candles`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/monitoring/candles",
+    tag = "monitoring",
+    params(CandleQueryParams),
+    responses(
+        (status = 200, description = "Aggregated OHLCV buckets ordered by ascending `ts`.", body = [CandleDto]),
+        (status = 400, description = "Invalid timeframe, range or too many points.", body = CandleErrorBody),
+        (status = 401, description = "Missing or invalid `X-API-Key` header."),
+        (status = 503, description = "Datastore temporarily unreachable.", body = CandleErrorBody),
+        (status = 500, description = "Unexpected internal error (e.g. schema drift).", body = CandleErrorBody),
+    ),
+    security(
+        ("x_api_key" = [])
+    ),
+)]
 pub async fn get_candles(
     State(state): State<AppState>,
     Query(params): Query<CandleQueryParams>,
@@ -232,9 +257,10 @@ mod tests {
     use std::sync::Arc;
 
     use application::ports::{
-        CandleQuery, CandleRepository, Clock, HealthCheckError, HealthChecker, RepositoryError,
+        CandleQuery, CandleRepository, Clock, HealthCheckError, HealthChecker, OrderQuery,
+        OrderRepository, RepositoryError,
     };
-    use application::use_cases::{GetCandles, ReadinessProbe};
+    use application::use_cases::{GetCandles, GetOrders, ReadinessProbe};
     use async_trait::async_trait;
     use axum::{
         Router,
@@ -244,6 +270,7 @@ mod tests {
     };
     use chrono::TimeZone;
     use domain::candle::Candle;
+    use domain::order::Order;
     use rust_decimal_macros::dec;
     use tower::ServiceExt;
 
@@ -295,11 +322,24 @@ mod tests {
         }
     }
 
+    struct EmptyOrderRepo;
+
+    #[async_trait]
+    impl OrderRepository for EmptyOrderRepo {
+        async fn fetch_orders_for_strategy(
+            &self,
+            _q: &OrderQuery,
+        ) -> Result<Vec<Order>, RepositoryError> {
+            Ok(vec![])
+        }
+    }
+
     fn state_with(repo: Arc<dyn CandleRepository>, clock: Arc<dyn Clock>) -> AppState {
         AppState {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(DummyHealth))),
             api_key: Arc::new(b"unused".to_vec()),
-            get_candles: Arc::new(GetCandles::new(repo, clock)),
+            get_candles: Arc::new(GetCandles::new(repo, clock.clone())),
+            get_orders: Arc::new(GetOrders::new(Arc::new(EmptyOrderRepo), clock)),
         }
     }
 
