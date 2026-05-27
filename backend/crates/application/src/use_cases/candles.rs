@@ -113,13 +113,16 @@ fn estimate_bucket_count(from: DateTime<Utc>, to: DateTime<Utc>, timeframe: Time
     let width = timeframe.width_seconds();
     debug_assert!(width > 0);
 
-    let delta_secs = (to - from).num_seconds();
+    // `signed_duration_since` saturates rather than panicking on extreme dates,
+    // and `saturating_add` then prevents the ceiling-division offset from
+    // overflowing `i64::MAX` if a caller sends adversarial timestamps.
+    let delta_secs = to.signed_duration_since(from).num_seconds();
     if delta_secs <= 0 {
         return 0;
     }
 
     // Ceiling division: `(a + b - 1) / b` for positive `a` and `b`.
-    let buckets = (delta_secs + width - 1) / width;
+    let buckets = delta_secs.saturating_add(width - 1) / width;
     // Buckets are positive and Postgres rows are `usize` here; capping at
     // `usize::MAX` is a no-op on 64-bit targets but keeps the conversion
     // explicit.
@@ -187,6 +190,65 @@ mod tests {
     fn estimate_bucket_count_handles_zero_window() {
         let from = t(2026, 5, 1, 0);
         assert_eq!(estimate_bucket_count(from, from, Timeframe::H1), 0);
+    }
+
+    #[test]
+    fn estimate_bucket_count_at_cap_boundary() {
+        let from = t(2026, 5, 1, 0);
+        let to_5000 = from + Duration::hours(MAX_CANDLE_POINTS as i64);
+        assert_eq!(
+            estimate_bucket_count(from, to_5000, Timeframe::H1),
+            MAX_CANDLE_POINTS
+        );
+        let to_5001 = from + Duration::hours(MAX_CANDLE_POINTS as i64 + 1);
+        assert_eq!(
+            estimate_bucket_count(from, to_5001, Timeframe::H1),
+            MAX_CANDLE_POINTS + 1
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn accepts_exactly_max_candle_points() {
+        let repo = Arc::new(FakeRepo { response: vec![] });
+        let clock = Arc::new(FixedClock(t(2026, 5, 27, 12)));
+        let uc = GetCandles::new(repo, clock);
+        let from = t(2026, 5, 1, 0);
+        let to = from + Duration::hours(MAX_CANDLE_POINTS as i64);
+        uc.run(GetCandlesInput {
+            exchange: "binance".into(),
+            symbol: "BTCUSDT".into(),
+            timeframe: Timeframe::H1,
+            from,
+            to: Some(to),
+        })
+        .await
+        .expect("exactly MAX_CANDLE_POINTS buckets must be accepted");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn rejects_one_over_max_candle_points() {
+        let repo = Arc::new(FakeRepo { response: vec![] });
+        let clock = Arc::new(FixedClock(t(2026, 5, 27, 12)));
+        let uc = GetCandles::new(repo, clock);
+        let from = t(2026, 5, 1, 0);
+        let to = from + Duration::hours(MAX_CANDLE_POINTS as i64 + 1);
+        let err = uc
+            .run(GetCandlesInput {
+                exchange: "binance".into(),
+                symbol: "BTCUSDT".into(),
+                timeframe: Timeframe::H1,
+                from,
+                to: Some(to),
+            })
+            .await
+            .unwrap_err();
+        match err {
+            GetCandlesError::Domain(CandleQueryError::TooManyPoints { requested, max }) => {
+                assert_eq!(max, MAX_CANDLE_POINTS);
+                assert_eq!(requested, MAX_CANDLE_POINTS + 1);
+            }
+            other => panic!("expected TooManyPoints, got {other:?}"),
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]

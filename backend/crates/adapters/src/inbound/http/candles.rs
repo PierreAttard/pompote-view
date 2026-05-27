@@ -278,6 +278,15 @@ mod tests {
         }
     }
 
+    struct BrokenRepo;
+
+    #[async_trait]
+    impl CandleRepository for BrokenRepo {
+        async fn fetch_aggregated(&self, _q: &CandleQuery) -> Result<Vec<Candle>, RepositoryError> {
+            Err(RepositoryError::Internal("simulated schema drift".into()))
+        }
+    }
+
     struct FixedClock(DateTime<Utc>);
 
     impl Clock for FixedClock {
@@ -343,9 +352,15 @@ mod tests {
         let arr = body.as_array().expect("response should be a JSON array");
         assert_eq!(arr.len(), 1);
         let o = arr[0]["o"].as_f64().unwrap();
+        let h = arr[0]["h"].as_f64().unwrap();
+        let l = arr[0]["l"].as_f64().unwrap();
         let c = arr[0]["c"].as_f64().unwrap();
+        let v = arr[0]["v"].as_f64().unwrap();
         assert!((o - 75000.50).abs() < 1e-6);
+        assert!((h - 75100.00).abs() < 1e-6);
+        assert!((l - 74950.00).abs() < 1e-6);
         assert!((c - 75050.25).abs() < 1e-6);
+        assert!((v - 12.345).abs() < 1e-6);
         assert_eq!(arr[0]["ts"].as_str().unwrap(), "2026-05-27T00:00:00Z");
     }
 
@@ -435,6 +450,34 @@ mod tests {
             .unwrap();
         let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(body["error"], "invalid_range");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn surfaces_500_when_repo_internal() {
+        let state = state_with(
+            Arc::new(BrokenRepo),
+            Arc::new(FixedClock(
+                Utc.with_ymd_and_hms(2026, 5, 27, 12, 0, 0).unwrap(),
+            )),
+        );
+        let app = router_for(state);
+        let resp = app
+            .oneshot(
+                Request::get(
+                    "/api/v1/monitoring/candles?exchange=binance&symbol=BTC/USDC\
+                     &timeframe=1h&from=2026-05-27T00:00:00Z&to=2026-05-27T05:00:00Z",
+                )
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["error"], "internal_error");
     }
 
     #[tokio::test(flavor = "current_thread")]
