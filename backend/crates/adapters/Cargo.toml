@@ -30,6 +30,9 @@ chrono.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
 subtle.workspace = true
+rust_decimal.workspace = true
 
 [dev-dependencies]
 tower = { workspace = true, features = ["util"] }
+# `dec!` macro lets handler tests build `Decimal` literals readably.
+rust_decimal_macros = "1"
