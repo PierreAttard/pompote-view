@@ -1,0 +1,49 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/PierreAttard/pompote-view"
+authors = ["Pierre Attard"]
+rust-version = "1.85"
+
+[workspace.dependencies]
+# HTTP server
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+
+# Database (read-only access via pompote_viz_reader role)
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "chrono",
+    "macros",
+    "migrate",
+] }
+
+# OpenAPI + Swagger UI + TypeScript client generation
+utoipa = { version = "5", features = ["axum_extras", "chrono"] }
+utoipa-axum = "0.2"
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Time
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
