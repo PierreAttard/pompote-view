@@ -1,41 +1,77 @@
-//! viz_api — read-only HTTP server for visualizing trading strategy decisions.
+//! `viz_api` — composition root for the read-only visualization backend.
 //!
-//! This is the minimal scaffold introduced by Issue #4. Routing, middleware,
-//! DB access and monitoring endpoints land in subsequent issues (#7+).
+//! This binary owns the wiring between adapters and use cases. It contains
+//! no domain logic: it reads the config, builds the sqlx pool, instantiates
+//! the `SqlxHealthChecker` adapter, hands it to the `ReadinessProbe` use
+//! case, and serves the axum router built by `adapters::inbound::http`.
+//!
+//! See `backend/README.md` for the environment variables and run commands.
 
-use axum::{Router, http::StatusCode, routing::get};
+mod config;
+
+use std::sync::Arc;
+
+use adapters::inbound::http::{AppState, build_router};
+use adapters::outbound::persistence::SqlxHealthChecker;
+use application::use_cases::ReadinessProbe;
+use std::time::Duration;
+
+use sqlx::postgres::PgPoolOptions;
 use tokio::net::TcpListener;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-/// Default bind address for the read-only visualization HTTP API.
+use crate::config::AppConfig;
+
+/// Max connections in the read-only pool.
 ///
-/// Port 3100 is used as the default because the more common port 3000 is
-/// often already occupied by other services on dev machines.
-const BIND_ADDR: &str = "0.0.0.0:3100";
+/// The viz backend has a single use case at boot (`SELECT 1` on `/readyz`)
+/// and a few `SELECT`s per UI poll cycle. 5 is comfortably above the
+/// expected steady-state load while leaving room on the Timescale instance
+/// for the producer pipeline owned by `robot_rust`.
+const POOL_MAX_CONNECTIONS: u32 = 5;
+
+/// Bound applied to `pool.acquire()` so `/readyz` reports `503` quickly when
+/// Postgres is unreachable instead of hanging on the sqlx default (30s).
+const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    init_tracing();
+
+    let cfg = AppConfig::from_env()?;
+
+    // `connect_lazy` parses the URL (so a malformed DSN still fails fast at
+    // boot) but defers the actual TCP/TLS handshake until the first query.
+    // This is exactly what we want for `/readyz`: the server can still bind
+    // and answer `/healthz` when Postgres is temporarily unreachable, and
+    // `/readyz` will surface `503` for the orchestrator.
+    let pool = PgPoolOptions::new()
+        .max_connections(POOL_MAX_CONNECTIONS)
+        .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
+        .connect_lazy(&cfg.database_url)?;
+    info!("postgres pool initialised (lazy connect)");
+
+    let health_checker = Arc::new(SqlxHealthChecker::new(pool));
+    let readiness = Arc::new(ReadinessProbe::new(health_checker));
+
+    let state = AppState {
+        readiness,
+        api_key: Arc::new(cfg.api_key.into_bytes()),
+    };
+
+    let app = build_router(state);
+
+    let listener = TcpListener::bind(&cfg.bind_addr).await?;
+    info!(addr = %cfg.bind_addr, "viz_api listening");
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+
+fn init_tracing() {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .init();
-
-    let app = Router::new()
-        .route("/healthz", get(healthz))
-        .route("/readyz", get(readyz));
-
-    let listener = TcpListener::bind(BIND_ADDR).await?;
-    info!(addr = %BIND_ADDR, "viz_api listening");
-    axum::serve(listener, app).await?;
-    Ok(())
-}
-
-async fn healthz() -> (StatusCode, &'static str) {
-    (StatusCode::OK, "ok")
-}
-
-async fn readyz() -> (StatusCode, &'static str) {
-    (StatusCode::OK, "ok")
 }

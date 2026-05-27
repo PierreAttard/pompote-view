@@ -7,20 +7,23 @@ repository.workspace = true
 authors.workspace = true
 rust-version.workspace = true
 
+# `viz_api` is the composition root (hexagonal "bootstrap" crate):
+# it owns `fn main()`, reads the env config, builds the sqlx pool, wires
+# the adapters into the application use cases, and starts the axum server.
+# It contains no business logic.
+
 [[bin]]
 name = "viz_api"
 path = "src/main.rs"
 
 [dependencies]
+application.workspace = true
+adapters.workspace = true
+
 axum.workspace = true
 tokio.workspace = true
 sqlx.workspace = true
-utoipa.workspace = true
-utoipa-axum.workspace = true
-utoipa-swagger-ui.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-chrono.workspace = true
+
 tracing.workspace = true
 tracing-subscriber.workspace = true
 thiserror.workspace = true
