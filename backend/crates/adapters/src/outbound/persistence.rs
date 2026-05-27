@@ -29,8 +29,8 @@ impl SqlxHealthChecker {
 #[async_trait]
 impl HealthChecker for SqlxHealthChecker {
     async fn check(&self) -> Result<(), HealthCheckError> {
-        sqlx::query("SELECT 1")
-            .execute(&self.pool)
+        sqlx::query_scalar::<_, i32>("SELECT 1")
+            .fetch_one(&self.pool)
             .await
             .map(|_| ())
             .map_err(|e| HealthCheckError::Unavailable(e.to_string()))

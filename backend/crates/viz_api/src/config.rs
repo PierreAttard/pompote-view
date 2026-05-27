@@ -23,7 +23,12 @@ const DEFAULT_BIND_ADDR: &str = "0.0.0.0:3100";
 pub const MIN_API_KEY_LEN: usize = 16;
 
 /// Parsed configuration for the viz API.
-#[derive(Debug, Clone)]
+///
+/// `Debug` is implemented manually to redact sensitive fields (`database_url`
+/// contains the Postgres password, `api_key` is the shared HTTP secret). This
+/// guards against accidental leaks via `tracing::debug!(?cfg)` or
+/// `error!("config: {:?}", cfg)` in future code.
+#[derive(Clone)]
 pub struct AppConfig {
     /// Postgres connection URL for the read-only `pompote_viz_reader` role.
     pub database_url: String,
@@ -31,6 +36,16 @@ pub struct AppConfig {
     pub api_key: String,
     /// Socket address the axum server will bind to.
     pub bind_addr: String,
+}
+
+impl std::fmt::Debug for AppConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppConfig")
+            .field("database_url", &"<redacted>")
+            .field("api_key", &"<redacted>")
+            .field("bind_addr", &self.bind_addr)
+            .finish()
+    }
 }
 
 /// Errors returned when reading the configuration from the environment.
@@ -94,5 +109,38 @@ fn optional_env(name: &'static str) -> Result<Option<String>, ConfigError> {
         Ok(v) => Ok(Some(v)),
         Err(VarError::NotPresent) => Ok(None),
         Err(VarError::NotUnicode(_)) => Err(ConfigError::NotUnicode { var: name }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_redacts_sensitive_fields() {
+        let cfg = AppConfig {
+            database_url: "postgres://user:supersecretpassword@localhost/db".to_string(),
+            api_key: "verysecretapikey1234567890".to_string(),
+            bind_addr: "127.0.0.1:3100".to_string(),
+        };
+
+        let dbg = format!("{:?}", cfg);
+
+        assert!(
+            dbg.contains("<redacted>"),
+            "Debug output should contain `<redacted>` marker: {dbg}"
+        );
+        assert!(
+            !dbg.contains("supersecretpassword"),
+            "Debug output must not leak the DB password: {dbg}"
+        );
+        assert!(
+            !dbg.contains("verysecretapikey1234567890"),
+            "Debug output must not leak the API key: {dbg}"
+        );
+        assert!(
+            dbg.contains("127.0.0.1:3100"),
+            "Debug output should still expose non-sensitive bind_addr: {dbg}"
+        );
     }
 }
