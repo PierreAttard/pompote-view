@@ -139,18 +139,66 @@ npm run check        # svelte-check + tsc
 docker compose up    # Timescale + backend viz + frontend
 ```
 
-## Garde-fous d'isolation
+## ⛔ INTERDICTION STRICTE — repo `robot_rust`
 
-- ❌ **Aucune migration DB** dans ce repo — le schéma est la propriété de `robot_rust`. Si une
-  évolution du schéma est nécessaire, ouvrir une PR côté `robot_rust`, jamais ici.
-- ❌ **Pas de crate Rust partagé** avec `robot_rust`. Les **DTOs sont re-déclarés** côté
-  `pompote-view`. Cela autorise l'ouverture open-source sans fuite du code privé.
+**Aucun agent Claude n'a le droit de modifier le repo [`robot_rust`](https://github.com/PierreAttard/robot_rust)** depuis ce repo, sous aucun prétexte. Cela inclut :
+
+- ❌ Pas de `git push` vers `robot_rust`
+- ❌ Pas de PR créée sur `robot_rust` via `gh pr create`
+- ❌ Pas d'issue créée sur `robot_rust` via `gh issue create`
+- ❌ Pas de migration DB ajoutée/modifiée dans `robot_rust`
+- ❌ Pas de modification du schéma DB (tables, colonnes, index, rôles, retention policies)
+- ❌ Pas de modification du `strategy_engine`, `trade_storer`, `candle_storer`, `api_server`
+- ❌ Pas de submodule git pointant vers une branche que tu modifierais
+- ❌ Pas de crate Rust partagé (DTOs **re-déclarés** ici)
+
+Tu peux **lire** `robot_rust` (par exemple `git clone --depth=1` en CI pour récupérer le schéma DB, en lecture seule).
+
+Si une tâche semble exiger un changement côté `robot_rust` (« la colonne X manque », « il faudrait un index », « le rôle DB n'a pas le grant Z »…), **STOP immédiatement** et remonte la demande à l'utilisateur en expliquant ce qui bloque. C'est à l'**humain** d'ouvrir la PR côté `robot_rust`, jamais à un agent depuis ce repo.
+
+## Autres garde-fous d'isolation
+
 - ❌ **Pas d'accès r/w à la DB**. La connexion utilise **uniquement** le rôle
   `pompote_viz_reader` (SELECT only). Toute requête mutative doit échouer côté DB.
 - ❌ **Pas de secret commité**. Clé API et URL DB passent par variables d'environnement (et
   Sealed Secret K8s plus tard).
 - ❌ **Pas de dépendance directe** du `domain` Rust vers `axum`, `sqlx` ou tout autre crate d'I/O
   (cf. architecture hexagonale).
+
+## Agents Claude Code
+
+Le repo définit **5 sous-agents** dans `.claude/agents/`, organisés en deux familles :
+
+### Agents techniques (implémentent le code)
+
+| Agent | Périmètre | À utiliser pour |
+|---|---|---|
+| `svelte-frontend` | Frontend SvelteKit, Vitest, Playwright, Lightweight Charts | Lots 3-7 (squelette, chart, annotations, indicateurs, live monitoring) |
+| `viz-backend` | Backend Rust hexagonal (axum, sqlx, utoipa) | Lot 1 (endpoints monitoring, pipeline OpenAPI, tests d'intégration) |
+| `infra-local` | docker-compose, scaffold workspace, CI GitHub Actions | Lot 0 (préparation, tuyauterie) |
+
+### Agents produit (loop UX → backlog)
+
+| Agent | Rôle | À utiliser pour |
+|---|---|---|
+| `agathe` | Persona tradeuse intermédiaire qui **utilise** l'UI | Tester une feature côté utilisateur, remonter des frictions UX, produire un rapport de besoins |
+| `pompote` | PM qui **convertit** les besoins en issues GitHub | Transformer un rapport d'Agathe (ou un besoin utilisateur) en issues labellisées `view` + `priority:p*`, ajoutées au projet `PompoteViewProject` (#3) |
+
+**Le loop produit :**
+
+```
+Agathe (utilise l'UI) ──► rapport de besoins ──► Pompote (PM)
+                                                      │
+                                                      ▼
+                                      issues GitHub `view` + `priority:p*`
+                                      ajoutées à PompoteViewProject (#3)
+                                                      │
+                                                      ▼
+                              svelte-frontend / viz-backend / infra-local
+                                       (implémentent les issues)
+```
+
+Tous les agents — y compris Agathe et Pompote — sont soumis à l'**interdiction stricte de modifier `robot_rust`** (cf. section dédiée plus haut).
 
 ## Hors scope
 
