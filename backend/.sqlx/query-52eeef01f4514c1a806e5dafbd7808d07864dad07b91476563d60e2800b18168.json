@@ -1,0 +1,57 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                time_bucket($1::text::interval, open_time) AS \"bucket!: chrono::DateTime<chrono::Utc>\",\n                first(open, open_time)                     AS \"open!: Decimal\",\n                max(high)                                  AS \"high!: Decimal\",\n                min(low)                                   AS \"low!: Decimal\",\n                last(close, open_time)                     AS \"close!: Decimal\",\n                sum(volume)                                AS \"volume!: Decimal\"\n            FROM candles_5s\n            WHERE exchange = $2\n              AND symbol = $3\n              AND open_time >= $4\n              AND open_time < $5\n            GROUP BY time_bucket($1::text::interval, open_time)\n            ORDER BY time_bucket($1::text::interval, open_time) ASC\n            LIMIT $6\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "bucket!: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 1,
+        "name": "open!: Decimal",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 2,
+        "name": "high!: Decimal",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "low!: Decimal",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "close!: Decimal",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "volume!: Decimal",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "52eeef01f4514c1a806e5dafbd7808d07864dad07b91476563d60e2800b18168"
+}
