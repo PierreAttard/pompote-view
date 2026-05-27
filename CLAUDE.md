@@ -181,7 +181,7 @@ Si une tâche semble exiger un changement côté `robot_rust` (« la colonne X m
 
 ## Agents Claude Code
 
-Le repo définit **5 sous-agents** dans `.claude/agents/`, organisés en deux familles :
+Le repo définit **7 sous-agents** dans `.claude/agents/`, organisés en trois familles :
 
 ### Agents techniques (implémentent le code)
 
@@ -191,6 +191,13 @@ Le repo définit **5 sous-agents** dans `.claude/agents/`, organisés en deux fa
 | `viz-backend` | Backend Rust hexagonal (axum, sqlx, utoipa) | Lot 1 (endpoints monitoring, pipeline OpenAPI, tests d'intégration) |
 | `infra-local` | docker-compose, scaffold workspace, CI GitHub Actions | Lot 0 (préparation, tuyauterie) |
 
+### Agents reviewers (audit du code, lecture seule)
+
+| Agent | Périmètre | À utiliser pour |
+|---|---|---|
+| `rust-reviewer` | Backend Rust + archi hexagonale | Reviewer une PR ou un diff backend avant merge : checklist hexagonale, `cargo fmt`/`clippy`/`test`, sqlx read-only, axum/utoipa, cap 5000, sécurité (incl. interdictions `robot_rust` et exchanges). N'a pas `Edit`/`Write` — produit un rapport structuré. |
+| `svelte-reviewer` | Frontend SvelteKit | Reviewer une PR ou un diff frontend : runes Svelte 5, client TS généré, cap 5000 côté UI, header auth, Lightweight Charts lifecycle, Vitest/Playwright, sécurité. N'a pas `Edit`/`Write` — produit un rapport structuré. |
+
 ### Agents produit (loop UX → backlog)
 
 | Agent | Rôle | À utiliser pour |
@@ -198,7 +205,7 @@ Le repo définit **5 sous-agents** dans `.claude/agents/`, organisés en deux fa
 | `agathe` | Persona tradeuse intermédiaire — (1) **utilise** l'UI ET (2) propose des **idées d'amélioration de stratégies** | Feedback UX, idées de stratégie/indicateur basées sur l'observation des décisions dans l'UI |
 | `pompote` | PM qui **convertit** les besoins en issues GitHub | Transformer un rapport d'Agathe (ou un besoin utilisateur) en issues labellisées `view` + `priority:p*` + `kind:{ux,strategy-idea,bug}`, ajoutées au projet `PompoteViewProject` (#3). Les `kind:strategy-idea` mentionnent explicitement la dépendance `robot_rust` (à porter par l'humain). |
 
-**Le loop produit :**
+**Le loop produit + dev :**
 
 ```
 Agathe (utilise l'UI) ──► rapport de besoins ──► Pompote (PM)
@@ -210,9 +217,13 @@ Agathe (utilise l'UI) ──► rapport de besoins ──► Pompote (PM)
                                                       ▼
                               svelte-frontend / viz-backend / infra-local
                                        (implémentent les issues)
+                                                      │
+                                                      ▼
+                              svelte-reviewer / rust-reviewer
+                                  (review avant merge)
 ```
 
-Tous les agents — y compris Agathe et Pompote — sont soumis à l'**interdiction stricte de modifier `robot_rust`** (cf. section dédiée plus haut).
+Tous les agents — Agathe et Pompote inclus — sont soumis à l'**interdiction stricte de modifier `robot_rust`** ET à l'**interdiction absolue d'utiliser un compte exchange pour passer un trade** (cf. sections dédiées plus haut).
 
 ## Hors scope
 
