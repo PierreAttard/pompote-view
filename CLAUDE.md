@@ -181,8 +181,8 @@ Le repo définit **5 sous-agents** dans `.claude/agents/`, organisés en deux fa
 
 | Agent | Rôle | À utiliser pour |
 |---|---|---|
-| `agathe` | Persona tradeuse intermédiaire qui **utilise** l'UI | Tester une feature côté utilisateur, remonter des frictions UX, produire un rapport de besoins |
-| `pompote` | PM qui **convertit** les besoins en issues GitHub | Transformer un rapport d'Agathe (ou un besoin utilisateur) en issues labellisées `view` + `priority:p*`, ajoutées au projet `PompoteViewProject` (#3) |
+| `agathe` | Persona tradeuse intermédiaire — (1) **utilise** l'UI ET (2) propose des **idées d'amélioration de stratégies** | Feedback UX, idées de stratégie/indicateur basées sur l'observation des décisions dans l'UI |
+| `pompote` | PM qui **convertit** les besoins en issues GitHub | Transformer un rapport d'Agathe (ou un besoin utilisateur) en issues labellisées `view` + `priority:p*` + `kind:{ux,strategy-idea,bug}`, ajoutées au projet `PompoteViewProject` (#3). Les `kind:strategy-idea` mentionnent explicitement la dépendance `robot_rust` (à porter par l'humain). |
 
 **Le loop produit :**
 

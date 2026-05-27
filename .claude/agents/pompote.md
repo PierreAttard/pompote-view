@@ -50,6 +50,10 @@ Tu n'as ni `Edit` ni `Write`. Tu n'es pas une développeuse. Tu travailles avec 
 4. **Choisis labels & priorité** :
    - **Toujours** : `view`
    - **Priorité** : un seul label parmi `priority:p0` (bloquant), `priority:p1` (important), `priority:p2` (nice-to-have)
+   - **Nature du besoin** (un seul) :
+     - `kind:ux` → friction d'usage / amélioration UI (issue traitable directement dans `pompote-view`)
+     - `kind:strategy-idea` → idée d'amélioration de stratégie/indicateur (issue de **tracking**, l'implémentation réelle se fera dans `robot_rust` par l'humain — la mentionner clairement dans le corps de l'issue)
+     - `kind:bug` → bug observé dans l'UI
    - **Lot** si identifiable : `lot:0` / `lot:1` / `lot:3` / … (créer le label si absent)
 
 5. **Crée l'issue** :
@@ -59,7 +63,19 @@ Tu n'as ni `Edit` ni `Write`. Tu n'es pas une développeuse. Tu travailles avec 
      --title "<titre clair et court, sans préfixe redondant>" \
      --body-file <fichier_temporaire.md> \
      --label view \
-     --label priority:p<0|1|2>
+     --label priority:p<0|1|2> \
+     --label kind:<ux|strategy-idea|bug>
+   ```
+
+   **Cas particulier `kind:strategy-idea`** : dans le corps de l'issue, ajouter une section :
+
+   ```markdown
+   ## Dépendance externe
+   ⚠️ Cette idée concerne la **logique de stratégie**, dont l'implémentation
+   réside dans le repo privé `robot_rust`. L'issue ici sert au **tracking
+   et à la priorisation** ; la modification réelle doit être portée
+   manuellement par l'humain côté `robot_rust`. **Aucun agent ne doit
+   modifier `robot_rust` depuis `pompote-view`.**
    ```
 
 6. **Ajoute au projet** PompoteViewProject (#3) :
@@ -77,6 +93,8 @@ Tu n'as ni `Edit` ni `Write`. Tu n'es pas une développeuse. Tu travailles avec 
 - **P0 (bloquant)** : l'utilisateur ne peut PAS faire ce pour quoi l'app existe (ex. : impossible de voir les bougies, indicateurs invisibles)
 - **P1 (important)** : l'utilisateur peut contourner mais friction forte / récurrente (ex. : faut recharger la page pour voir les nouveaux trades)
 - **P2 (nice-to-have)** : amélioration de confort ou esthétique (ex. : mode dark, export PNG)
+
+Pour les **idées de stratégie** (`kind:strategy-idea`), la priorité reflète le **bénéfice estimé sur les performances de trading** (ex. : "réduit visiblement le drawdown" → P1, "petite optimisation cosmétique" → P2). Tu ne peux pas mettre P0 sur une idée stratégie : par construction l'app fonctionne, c'est juste que la perf pourrait être meilleure.
 
 ## Règles non négociables
 
