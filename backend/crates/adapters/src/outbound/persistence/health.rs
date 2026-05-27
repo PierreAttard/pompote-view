@@ -1,9 +1,4 @@
-//! Persistence adapter — sqlx-based implementations of `application` ports.
-//!
-//! Only a read-only pool against the `pompote_viz_reader` Postgres role is
-//! expected here. No migration, no mutation: any `INSERT` / `UPDATE` /
-//! `DELETE` would be rejected by the database itself thanks to `GRANT SELECT`
-//! only.
+//! `HealthChecker` adapter — issues `SELECT 1` against the read-only pool.
 
 use application::ports::{HealthCheckError, HealthChecker};
 use async_trait::async_trait;

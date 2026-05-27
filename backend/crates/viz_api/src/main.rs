@@ -12,8 +12,9 @@ mod config;
 use std::sync::Arc;
 
 use adapters::inbound::http::{AppState, build_router};
-use adapters::outbound::persistence::SqlxHealthChecker;
-use application::use_cases::ReadinessProbe;
+use adapters::outbound::clock::SystemClock;
+use adapters::outbound::persistence::{SqlxCandleRepository, SqlxHealthChecker};
+use application::use_cases::{GetCandles, ReadinessProbe};
 use std::time::Duration;
 
 use sqlx::postgres::PgPoolOptions;
@@ -52,12 +53,17 @@ async fn main() -> anyhow::Result<()> {
         .connect_lazy(&cfg.database_url)?;
     info!("postgres pool initialised (lazy connect)");
 
-    let health_checker = Arc::new(SqlxHealthChecker::new(pool));
+    let health_checker = Arc::new(SqlxHealthChecker::new(pool.clone()));
     let readiness = Arc::new(ReadinessProbe::new(health_checker));
+
+    let candle_repo = Arc::new(SqlxCandleRepository::new(pool));
+    let clock = Arc::new(SystemClock);
+    let get_candles = Arc::new(GetCandles::new(candle_repo, clock));
 
     let state = AppState {
         readiness,
         api_key: Arc::new(cfg.api_key.into_bytes()),
+        get_candles,
     };
 
     let app = build_router(state);

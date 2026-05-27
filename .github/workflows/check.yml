@@ -31,6 +31,12 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # `SQLX_OFFLINE=true` makes `sqlx::query!` consume the committed
+    # `backend/.sqlx/` metadata instead of opening a TCP connection. CI is
+    # therefore decoupled from any Postgres instance — the production schema
+    # lives in the private `robot_rust` repo and we never reach it from CI.
+    env:
+      SQLX_OFFLINE: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v5

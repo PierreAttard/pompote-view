@@ -20,14 +20,24 @@ axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
 
-# Database (read-only access via pompote_viz_reader role)
+# Database (read-only access via pompote_viz_reader role).
+# `rust_decimal` feature enables `Decimal` <-> Postgres `NUMERIC` mapping,
+# required for OHLC prices and volumes which we never want to lose precision
+# on at the I/O boundary (see `domain::candle`).
 sqlx = { version = "0.8", default-features = false, features = [
     "runtime-tokio-rustls",
     "postgres",
     "chrono",
     "macros",
     "migrate",
+    "rust_decimal",
 ] }
+
+# Fixed-precision decimals for prices/volumes coming from Postgres `NUMERIC`.
+# Used in `domain` (no I/O dep), `adapters/outbound/persistence` (sqlx), and
+# at the JSON serialisation boundary in `adapters/inbound/http` (where we
+# explicitly down-cast to `f64` for Lightweight Charts consumption).
+rust_decimal = { version = "1", default-features = false, features = ["serde-with-str"] }
 
 # OpenAPI + Swagger UI + TypeScript client generation
 utoipa = { version = "5", features = ["axum_extras", "chrono"] }

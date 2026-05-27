@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use application::use_cases::ReadinessProbe;
+use application::use_cases::{GetCandles, ReadinessProbe};
 
 /// Immutable runtime state shared by every HTTP handler.
 ///
@@ -16,4 +16,6 @@ pub struct AppState {
     ///
     /// Stored as raw bytes to allow constant-time comparison via `subtle`.
     pub api_key: Arc<Vec<u8>>,
+    /// `GET /api/v1/monitoring/candles` use case.
+    pub get_candles: Arc<GetCandles>,
 }

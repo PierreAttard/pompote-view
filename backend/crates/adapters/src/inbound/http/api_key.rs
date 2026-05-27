@@ -52,8 +52,10 @@ fn unauthorized() -> Response {
 mod tests {
     use std::sync::Arc;
 
-    use application::ports::{HealthCheckError, HealthChecker};
-    use application::use_cases::ReadinessProbe;
+    use application::ports::{
+        CandleQuery, CandleRepository, Clock, HealthCheckError, HealthChecker, RepositoryError,
+    };
+    use application::use_cases::{GetCandles, ReadinessProbe};
     use async_trait::async_trait;
     use axum::{
         Router,
@@ -62,6 +64,8 @@ mod tests {
         middleware,
         routing::get,
     };
+    use chrono::{DateTime, Utc};
+    use domain::candle::Candle;
     use tower::ServiceExt;
 
     use super::*;
@@ -75,10 +79,28 @@ mod tests {
         }
     }
 
+    struct EmptyRepo;
+
+    #[async_trait]
+    impl CandleRepository for EmptyRepo {
+        async fn fetch_aggregated(&self, _q: &CandleQuery) -> Result<Vec<Candle>, RepositoryError> {
+            Ok(vec![])
+        }
+    }
+
+    struct UtcNowClock;
+
+    impl Clock for UtcNowClock {
+        fn now(&self) -> DateTime<Utc> {
+            Utc::now()
+        }
+    }
+
     fn test_state(api_key: &str) -> AppState {
         AppState {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(DummyHealth))),
             api_key: Arc::new(api_key.as_bytes().to_vec()),
+            get_candles: Arc::new(GetCandles::new(Arc::new(EmptyRepo), Arc::new(UtcNowClock))),
         }
     }
 
