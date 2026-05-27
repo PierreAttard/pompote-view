@@ -24,9 +24,10 @@ mod tests {
     use std::sync::Arc;
 
     use application::ports::{
-        CandleQuery, CandleRepository, Clock, HealthCheckError, HealthChecker, RepositoryError,
+        CandleQuery, CandleRepository, Clock, HealthCheckError, HealthChecker, OrderQuery,
+        OrderRepository, RepositoryError,
     };
-    use application::use_cases::{GetCandles, ReadinessProbe};
+    use application::use_cases::{GetCandles, GetOrders, ReadinessProbe};
     use async_trait::async_trait;
     use axum::{
         Router,
@@ -36,6 +37,7 @@ mod tests {
     };
     use chrono::{DateTime, Utc};
     use domain::candle::Candle;
+    use domain::order::Order;
     use tower::ServiceExt;
 
     use super::*;
@@ -67,6 +69,18 @@ mod tests {
         }
     }
 
+    struct EmptyOrderRepo;
+
+    #[async_trait]
+    impl OrderRepository for EmptyOrderRepo {
+        async fn fetch_orders_for_strategy(
+            &self,
+            _q: &OrderQuery,
+        ) -> Result<Vec<Order>, RepositoryError> {
+            Ok(vec![])
+        }
+    }
+
     struct UtcNowClock;
 
     impl Clock for UtcNowClock {
@@ -80,6 +94,10 @@ mod tests {
             readiness: Arc::new(probe),
             api_key: Arc::new(b"unused".to_vec()),
             get_candles: Arc::new(GetCandles::new(Arc::new(EmptyRepo), Arc::new(UtcNowClock))),
+            get_orders: Arc::new(GetOrders::new(
+                Arc::new(EmptyOrderRepo),
+                Arc::new(UtcNowClock),
+            )),
         };
         Router::new()
             .route("/healthz", get(healthz))

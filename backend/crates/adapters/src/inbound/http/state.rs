@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use application::use_cases::{GetCandles, ReadinessProbe};
+use application::use_cases::{GetCandles, GetOrders, ReadinessProbe};
 
 /// Immutable runtime state shared by every HTTP handler.
 ///
@@ -18,4 +18,6 @@ pub struct AppState {
     pub api_key: Arc<Vec<u8>>,
     /// `GET /api/v1/monitoring/candles` use case.
     pub get_candles: Arc<GetCandles>,
+    /// `GET /api/v1/monitoring/strategies/:id/orders` use case.
+    pub get_orders: Arc<GetOrders>,
 }

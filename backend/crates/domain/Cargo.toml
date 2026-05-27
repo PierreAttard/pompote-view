@@ -18,3 +18,5 @@ serde.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 rust_decimal.workspace = true
+# `uuid` is pure Rust (no I/O), so the dependency rule is preserved.
+uuid.workspace = true

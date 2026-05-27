@@ -4,16 +4,20 @@
 //!
 //! - [`candle`] — OHLCV bucket aggregate, [`candle::Timeframe`] whitelist,
 //!   the [`candle::MAX_CANDLE_POINTS`] cap, and [`candle::CandleQueryError`].
+//! - [`order`]  — `orders` row entity, [`order::OrderSide`] / [`order::OrderStatus`]
+//!   whitelists, the [`order::MAX_ORDER_ROWS`] cap, and [`order::OrderQueryError`].
 //!
-//! Decisions, markers and indicators land with later issues (#9, #10, #13).
+//! Decisions and indicators land with later issues (#9, #13).
 //!
 //! # Dependency rule
 //!
 //! This crate MUST NOT depend on `axum`, `sqlx`, `tokio` runtime, or any
 //! other I/O crate. Allowed dependencies are limited to `serde`, `chrono`,
-//! `thiserror` and `rust_decimal` (a `no_std`-friendly fixed-precision type).
-//! See `CLAUDE.md` for the full hexagonal architecture contract.
+//! `thiserror`, `rust_decimal` and `uuid` (a `no_std`-friendly pure-Rust
+//! 128-bit identifier). See `CLAUDE.md` for the full hexagonal architecture
+//! contract.
 
 #![forbid(unsafe_code)]
 
 pub mod candle;
+pub mod order;
