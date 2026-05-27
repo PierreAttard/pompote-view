@@ -139,18 +139,91 @@ npm run check        # svelte-check + tsc
 docker compose up    # Timescale + backend viz + frontend
 ```
 
-## Garde-fous d'isolation
+## ⛔ INTERDICTION STRICTE — repo `robot_rust`
 
-- ❌ **Aucune migration DB** dans ce repo — le schéma est la propriété de `robot_rust`. Si une
-  évolution du schéma est nécessaire, ouvrir une PR côté `robot_rust`, jamais ici.
-- ❌ **Pas de crate Rust partagé** avec `robot_rust`. Les **DTOs sont re-déclarés** côté
-  `pompote-view`. Cela autorise l'ouverture open-source sans fuite du code privé.
+**Aucun agent Claude n'a le droit de modifier le repo [`robot_rust`](https://github.com/PierreAttard/robot_rust)** depuis ce repo, sous aucun prétexte. Cela inclut :
+
+- ❌ Pas de `git push` vers `robot_rust`
+- ❌ Pas de PR créée sur `robot_rust` via `gh pr create`
+- ❌ Pas d'issue créée sur `robot_rust` via `gh issue create`
+- ❌ Pas de migration DB ajoutée/modifiée dans `robot_rust`
+- ❌ Pas de modification du schéma DB (tables, colonnes, index, rôles, retention policies)
+- ❌ Pas de modification du `strategy_engine`, `trade_storer`, `candle_storer`, `api_server`
+- ❌ Pas de submodule git pointant vers une branche que tu modifierais
+- ❌ Pas de crate Rust partagé (DTOs **re-déclarés** ici)
+
+Tu peux **lire** `robot_rust` (par exemple `git clone --depth=1` en CI pour récupérer le schéma DB, en lecture seule).
+
+Si une tâche semble exiger un changement côté `robot_rust` (« la colonne X manque », « il faudrait un index », « le rôle DB n'a pas le grant Z »…), **STOP immédiatement** et remonte la demande à l'utilisateur en expliquant ce qui bloque. C'est à l'**humain** d'ouvrir la PR côté `robot_rust`, jamais à un agent depuis ce repo.
+
+## ☠️ INTERDICTION ABSOLUE — comptes exchanges & argent réel
+
+**Aucun agent Claude n'a JAMAIS le droit d'utiliser un compte d'exchange (Binance, Kraken, Coinbase, OKX, Bybit, Bitget, Bitfinex, KuCoin, etc.) pour passer un trade en argent réel — ni en testnet, ni en paper-trading, ni "juste pour tester".** Cela inclut :
+
+- ❌ Pas de connexion à une API d'exchange (REST ou WebSocket)
+- ❌ Pas d'utilisation d'une clé API exchange (même en read-only)
+- ❌ Pas d'ajout de dépendance/SDK de trading (`ccxt`, `binance-rs`, `python-binance`, etc.)
+- ❌ Pas de code, script, commande, route, job, ou cron qui placerait/modifierait/annulerait un ordre
+- ❌ Pas de variable d'env de type `*_API_KEY`/`*_API_SECRET` exchange dans ce repo
+
+`pompote-view` est **strictement read-only sur la DB Timescale** : visualisation et monitoring uniquement. L'exécution réelle vit dans `robot_rust` (privé) et reste opérée par l'humain.
+
+> **Sanction explicite de l'utilisateur** : « je tue tout agent qui utilise les comptes des exchanges pour faire des trades avec de l'argent réel ». Concrètement → suppression du fichier d'agent, révocation des permissions, retrait de toute confiance. **Aucune circonstance ne justifie d'enfreindre cette règle.**
+
+## Autres garde-fous d'isolation
+
 - ❌ **Pas d'accès r/w à la DB**. La connexion utilise **uniquement** le rôle
   `pompote_viz_reader` (SELECT only). Toute requête mutative doit échouer côté DB.
 - ❌ **Pas de secret commité**. Clé API et URL DB passent par variables d'environnement (et
   Sealed Secret K8s plus tard).
 - ❌ **Pas de dépendance directe** du `domain` Rust vers `axum`, `sqlx` ou tout autre crate d'I/O
   (cf. architecture hexagonale).
+
+## Agents Claude Code
+
+Le repo définit **7 sous-agents** dans `.claude/agents/`, organisés en trois familles :
+
+### Agents techniques (implémentent le code)
+
+| Agent | Périmètre | À utiliser pour |
+|---|---|---|
+| `svelte-frontend` | Frontend SvelteKit, Vitest, Playwright, Lightweight Charts | Lots 3-7 (squelette, chart, annotations, indicateurs, live monitoring) |
+| `viz-backend` | Backend Rust hexagonal (axum, sqlx, utoipa) | Lot 1 (endpoints monitoring, pipeline OpenAPI, tests d'intégration) |
+| `infra-local` | docker-compose, scaffold workspace, CI GitHub Actions | Lot 0 (préparation, tuyauterie) |
+
+### Agents reviewers (audit du code, lecture seule)
+
+| Agent | Périmètre | À utiliser pour |
+|---|---|---|
+| `rust-reviewer` | Backend Rust + archi hexagonale | Reviewer une PR ou un diff backend avant merge : checklist hexagonale, `cargo fmt`/`clippy`/`test`, sqlx read-only, axum/utoipa, cap 5000, sécurité (incl. interdictions `robot_rust` et exchanges). N'a pas `Edit`/`Write` — produit un rapport structuré. |
+| `svelte-reviewer` | Frontend SvelteKit | Reviewer une PR ou un diff frontend : runes Svelte 5, client TS généré, cap 5000 côté UI, header auth, Lightweight Charts lifecycle, Vitest/Playwright, sécurité. N'a pas `Edit`/`Write` — produit un rapport structuré. |
+
+### Agents produit (loop UX → backlog)
+
+| Agent | Rôle | À utiliser pour |
+|---|---|---|
+| `agathe` | Persona tradeuse intermédiaire — (1) **utilise** l'UI ET (2) propose des **idées d'amélioration de stratégies** | Feedback UX, idées de stratégie/indicateur basées sur l'observation des décisions dans l'UI |
+| `pompote` | PM qui **convertit** les besoins en issues GitHub | Transformer un rapport d'Agathe (ou un besoin utilisateur) en issues labellisées `view` + `priority:p*` + `kind:{ux,strategy-idea,bug}`, ajoutées au projet `PompoteViewProject` (#3). Les `kind:strategy-idea` mentionnent explicitement la dépendance `robot_rust` (à porter par l'humain). |
+
+**Le loop produit + dev :**
+
+```
+Agathe (utilise l'UI) ──► rapport de besoins ──► Pompote (PM)
+                                                      │
+                                                      ▼
+                                      issues GitHub `view` + `priority:p*`
+                                      ajoutées à PompoteViewProject (#3)
+                                                      │
+                                                      ▼
+                              svelte-frontend / viz-backend / infra-local
+                                       (implémentent les issues)
+                                                      │
+                                                      ▼
+                              svelte-reviewer / rust-reviewer
+                                  (review avant merge)
+```
+
+Tous les agents — Agathe et Pompote inclus — sont soumis à l'**interdiction stricte de modifier `robot_rust`** ET à l'**interdiction absolue d'utiliser un compte exchange pour passer un trade** (cf. sections dédiées plus haut).
 
 ## Hors scope
 
