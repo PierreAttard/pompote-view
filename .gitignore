@@ -1,0 +1,64 @@
+# ---- Rust / Cargo ----
+target/
+**/*.rs.bk
+*.pdb
+Cargo.lock.bak
+
+# ---- Node / npm / pnpm / yarn ----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/install-state.gz
+.yarn/build-state.yml
+
+# ---- SvelteKit / Vite ----
+.svelte-kit/
+build/
+.output/
+.vite/
+.vercel/
+.netlify/
+dist/
+
+# ---- Tests ----
+coverage/
+.nyc_output/
+playwright-report/
+playwright/.cache/
+test-results/
+
+# ---- Env & secrets ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Logs ----
+*.log
+logs/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Editors / IDE ----
+.idea/
+.vscode/*
+!.vscode/settings.json.example
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+.history/
+
+# ---- Misc ----
+.cache/
+tmp/
+*.tmp
