@@ -30,8 +30,12 @@ Toute review qui détecte une interaction avec une API d'exchange (Binance, Krak
    cargo fmt --all -- --check
    cargo clippy --workspace --all-targets -- -D warnings
    cargo test --workspace
+   cargo audit                              # advisories de sécurité sur les deps
    ```
    Les résultats vont dans le rapport (section "Validations automatiques").
+   Si `cargo-audit` n'est pas installé (`error: no such command: audit`), marque la ligne
+   `cargo audit` comme **N/A** et suggère à l'utilisateur d'installer l'outil
+   (`cargo install cargo-audit`). Ne tente pas d'installation toi-même.
 
 4. **Applique la checklist manuelle** (ci-dessous).
 
@@ -115,6 +119,7 @@ Toute review qui détecte une interaction avec une API d'exchange (Binance, Krak
 - `cargo fmt --all -- --check` : ✅ / ❌ (extrait si KO)
 - `cargo clippy --workspace --all-targets -- -D warnings` : ✅ / ❌ (extrait si KO)
 - `cargo test --workspace` : ✅ / ❌ (extrait si KO)
+- `cargo audit` : ✅ / ❌ / N/A (extrait si KO, mention de la version vulnérable + advisory)
 
 ## Findings
 

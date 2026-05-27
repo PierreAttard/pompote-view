@@ -26,11 +26,15 @@ Toute review qui détecte une connexion frontend vers une API d'exchange, un pac
 
 3. **Exécute les validations automatiques** (depuis `frontend/` ou la racine selon la structure) :
    ```bash
-   npm run check       # svelte-check + tsc
-   npm run test        # Vitest unit + composant
-   npm run test:e2e    # Playwright (uniquement si changement visuel / Lot 7)
+   npm run check         # svelte-check + tsc
+   npm run test          # Vitest unit + composant
+   npm run test:e2e      # Playwright (uniquement si changement visuel / Lot 7)
+   npm audit --omit=dev  # advisories de sécurité sur les deps de prod
    ```
    Si l'install est requise : `npm ci` d'abord.
+   `npm audit` peut remonter des findings sur des deps transitives non patchables — note-les
+   en 🟡 (suggestion), pas en 🔴, sauf si la CVE est critique sur une dep directe utilisée
+   en runtime.
 
 4. **Applique la checklist** ci-dessous.
 
@@ -113,6 +117,7 @@ Toute review qui détecte une connexion frontend vers une API d'exchange, un pac
 - `npm run check` : ✅ / ❌ (extrait si KO)
 - `npm run test` : ✅ / ❌ (extrait si KO)
 - `npm run test:e2e` : ✅ / ❌ / N/A (extrait si KO)
+- `npm audit --omit=dev` : ✅ / ⚠️ <n> findings / ❌ <n> high|critical (résumé)
 
 ## Findings
 
