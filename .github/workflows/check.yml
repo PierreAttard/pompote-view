@@ -1,0 +1,99 @@
+# Lint + build + unit tests for the pompote-view monorepo.
+#
+# Two parallel jobs:
+#   - backend: cargo fmt / clippy / build / test on the Rust workspace
+#   - frontend: prettier + eslint + svelte-check + vite build + Vitest unit tests
+#
+# Integration tests against a disposable Postgres seeded with the schema cloned
+# from `robot_rust` are scoped to issue #12 (separate workflow). End-to-end
+# Playwright tests are scoped to a later lot. No exchange interaction here.
+
+name: check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref (e.g. force-push on a PR branch).
+concurrency:
+  group: check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend (rust)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Cargo registry and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo build (locked)
+        run: cargo build --workspace --locked
+
+      - name: cargo test (locked)
+        run: cargo test --workspace --locked
+
+  frontend:
+    name: frontend (sveltekit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # --legacy-peer-deps is required because openapi-typescript still pins an
+      # older TypeScript peer range while we're already on TS 6 (documented in
+      # PR #38). Revisit when openapi-typescript ships TS 6 support.
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      # Vitest 4 runs unit tests via @vitest/browser-playwright with a Chromium
+      # provider (see frontend/vite.config.ts). Install the browser + OS deps
+      # before running the test suite.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Lint (prettier + eslint)
+        run: npm run lint
+
+      - name: Type check (svelte-check)
+        run: npm run check
+
+      - name: Build (vite)
+        run: npm run build
+
+      - name: Unit tests (vitest)
+        run: npm run test:unit -- --run
