@@ -31,6 +31,7 @@ sqlx = { version = "0.8", default-features = false, features = [
     "macros",
     "migrate",
     "rust_decimal",
+    "uuid",
 ] }
 
 # Fixed-precision decimals for prices/volumes coming from Postgres `NUMERIC`.
@@ -40,9 +41,14 @@ sqlx = { version = "0.8", default-features = false, features = [
 rust_decimal = { version = "1", default-features = false, features = ["serde-with-str"] }
 
 # OpenAPI + Swagger UI + TypeScript client generation
-utoipa = { version = "5", features = ["axum_extras", "chrono"] }
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid", "decimal"] }
 utoipa-axum = "0.2"
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
+
+# UUIDs for path params and `orders` rows. `domain` consumes only the
+# pure-Rust core (no I/O); `adapters` enables `sqlx` for `Uuid` <-> Postgres
+# `uuid` mapping. `serde` lets DTOs round-trip in handlers/tests.
+uuid = { version = "1", default-features = false, features = ["std", "serde", "v4"] }
 
 # Async traits (ports defined in `application`)
 async-trait = "0.1"
