@@ -90,7 +90,7 @@ mod tests {
     }
 
     fn router_for(probe: ReadinessProbe) -> Router {
-        let (list_backtest_runs, get_backtest_run, get_backtest_series) =
+        let (list_backtest_runs, get_backtest_run, get_backtest_series, get_backtest_candles) =
             crate::inbound::http::state::test_support::stub_backtest_use_cases();
         let state = AppState {
             readiness: Arc::new(probe),
@@ -103,6 +103,7 @@ mod tests {
             list_backtest_runs,
             get_backtest_run,
             get_backtest_series,
+            get_backtest_candles,
         };
         Router::new()
             .route("/healthz", get(healthz))

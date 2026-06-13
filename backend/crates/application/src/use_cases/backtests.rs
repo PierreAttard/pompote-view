@@ -21,6 +21,7 @@ use domain::backtest::{
     BacktestOrder, BacktestQueryError, BacktestRun, BacktestRunDetail, BacktestStatus,
     MAX_BACKTEST_RUNS,
 };
+use domain::candle::{Candle, Timeframe};
 use domain::decision::Decision;
 use domain::fill::Fill;
 use domain::order::MAX_ORDER_ROWS;
@@ -29,6 +30,7 @@ use uuid::Uuid;
 use crate::ports::{
     BacktestRepository, BacktestRunListQuery, BacktestSeriesQuery, Clock, RepositoryError,
 };
+use crate::use_cases::candles::{GetCandles, GetCandlesError, GetCandlesInput};
 
 /// Top-level error shared by all backtest use cases.
 #[derive(Debug, thiserror::Error)]
@@ -205,11 +207,121 @@ fn cap_limit(limit: Option<usize>, max: usize) -> Result<usize, BacktestQueryErr
     }
 }
 
+// ---------------------------------------------------------------------------
+// GetBacktestRunCandles
+// ---------------------------------------------------------------------------
+
+/// Source of the OHLC background for a backtest run's chart.
+///
+/// `candles_5s` is the only candle source (no `candles_backtest`, no S3, per
+/// the locked decisions). When the run's market window is not covered by
+/// `candles_5s` (cold/old windows, synthetic C0 runs), the series is empty and
+/// the front-end degrades to a timeline-only view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BacktestCandleSource {
+    /// Candles came from `candles_5s` (window covered).
+    CandlesFiveS,
+    /// No candles for the window — degraded, timeline-only view.
+    None,
+}
+
+impl BacktestCandleSource {
+    /// Canonical wire string (`candles_5s` / `none`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::CandlesFiveS => "candles_5s",
+            Self::None => "none",
+        }
+    }
+}
+
+/// Outcome of [`GetBacktestRunCandles::run`]: the aggregated candles plus a
+/// hint telling the front-end whether an OHLC background is available.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BacktestCandles {
+    /// Aggregated OHLC buckets (empty when `source = None`).
+    pub candles: Vec<Candle>,
+    /// Availability hint.
+    pub source: BacktestCandleSource,
+}
+
+/// Error of the [`GetBacktestRunCandles`] use case.
+#[derive(Debug, thiserror::Error)]
+pub enum GetBacktestCandlesError {
+    /// No run has the requested id (mapped to HTTP `404`).
+    #[error("backtest run not found")]
+    RunNotFound,
+    /// The run lookup failed (datastore I/O).
+    #[error(transparent)]
+    Repository(#[from] RepositoryError),
+    /// The candle aggregation failed (range/cap validation or datastore I/O).
+    #[error(transparent)]
+    Candles(#[from] GetCandlesError),
+}
+
+/// Use case: aggregate `candles_5s` over a backtest run's replayed market
+/// window, with a source hint.
+///
+/// Composes the [`BacktestRepository`] (to resolve the run's
+/// exchange/symbol/window) with the existing [`GetCandles`] use case (which
+/// owns the timeframe whitelist and the [`domain::candle::MAX_CANDLE_POINTS`]
+/// cap). The window is the **market clock** `[data_range_start,
+/// data_range_end)`; wall-clock `started_at`/`ended_at` are irrelevant to
+/// candle selection.
+pub struct GetBacktestRunCandles {
+    repo: Arc<dyn BacktestRepository>,
+    get_candles: Arc<GetCandles>,
+}
+
+impl GetBacktestRunCandles {
+    /// Builds the use case over the backtest repository and candles use case.
+    pub fn new(repo: Arc<dyn BacktestRepository>, get_candles: Arc<GetCandles>) -> Self {
+        Self { repo, get_candles }
+    }
+
+    /// Resolves the run, aggregates its candles, and computes the source hint.
+    pub async fn run(
+        &self,
+        run_id: Uuid,
+        timeframe: Timeframe,
+    ) -> Result<BacktestCandles, GetBacktestCandlesError> {
+        let detail = self
+            .repo
+            .get_run(run_id)
+            .await?
+            .ok_or(GetBacktestCandlesError::RunNotFound)?;
+        let run = detail.run;
+
+        let series = self
+            .get_candles
+            .run(GetCandlesInput {
+                exchange: run.exchange,
+                symbol: run.symbol,
+                timeframe,
+                from: run.data_range_start,
+                to: Some(run.data_range_end),
+            })
+            .await?;
+
+        let source = if series.candles.is_empty() {
+            BacktestCandleSource::None
+        } else {
+            BacktestCandleSource::CandlesFiveS
+        };
+        Ok(BacktestCandles {
+            candles: series.candles,
+            source,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ports::{CandleQuery, CandleRepository};
     use async_trait::async_trait;
     use chrono::TimeZone;
+    use rust_decimal::Decimal;
     use tokio::sync::Mutex;
 
     /// Fake repository returning canned responses and capturing the last query.
@@ -520,5 +632,74 @@ mod tests {
             err,
             GetBacktestError::Repository(RepositoryError::Unavailable(_))
         ));
+    }
+
+    // --- GetBacktestRunCandles --------------------------------------------
+
+    struct CandleStub {
+        candles: Vec<Candle>,
+    }
+
+    #[async_trait]
+    impl CandleRepository for CandleStub {
+        async fn fetch_aggregated(&self, _q: &CandleQuery) -> Result<Vec<Candle>, RepositoryError> {
+            Ok(self.candles.clone())
+        }
+    }
+
+    fn candle() -> Candle {
+        Candle {
+            open_time: t(2026, 5, 1, 1),
+            open: Decimal::ZERO,
+            high: Decimal::ZERO,
+            low: Decimal::ZERO,
+            close: Decimal::ZERO,
+            volume: Decimal::ZERO,
+        }
+    }
+
+    fn candles_uc(
+        detail: Option<BacktestRunDetail>,
+        candles: Vec<Candle>,
+    ) -> GetBacktestRunCandles {
+        let repo = Arc::new(FakeRepo {
+            detail,
+            ..Default::default()
+        });
+        let get_candles = Arc::new(GetCandles::new(
+            Arc::new(CandleStub { candles }),
+            Arc::new(FixedClock(t(2026, 6, 1, 12))),
+        ));
+        GetBacktestRunCandles::new(repo, get_candles)
+    }
+
+    fn detail() -> BacktestRunDetail {
+        BacktestRunDetail {
+            run: sample_run(),
+            config_snapshot: serde_json::json!({}),
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn candles_source_is_candles_5s_when_present() {
+        let uc = candles_uc(Some(detail()), vec![candle()]);
+        let out = uc.run(Uuid::nil(), Timeframe::H1).await.unwrap();
+        assert_eq!(out.source, BacktestCandleSource::CandlesFiveS);
+        assert_eq!(out.candles.len(), 1);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn candles_source_is_none_when_window_uncovered() {
+        let uc = candles_uc(Some(detail()), vec![]);
+        let out = uc.run(Uuid::nil(), Timeframe::H1).await.unwrap();
+        assert_eq!(out.source, BacktestCandleSource::None);
+        assert!(out.candles.is_empty());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn candles_run_not_found() {
+        let uc = candles_uc(None, vec![]);
+        let err = uc.run(Uuid::nil(), Timeframe::H1).await.unwrap_err();
+        assert!(matches!(err, GetBacktestCandlesError::RunNotFound));
     }
 }

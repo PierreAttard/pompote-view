@@ -6,8 +6,9 @@ pub mod orders;
 pub mod readiness;
 
 pub use backtests::{
-    GetBacktestError, GetBacktestRun, GetBacktestSeries, GetBacktestSeriesInput, ListBacktestRuns,
-    ListBacktestRunsInput,
+    BacktestCandleSource, BacktestCandles, GetBacktestCandlesError, GetBacktestError,
+    GetBacktestRun, GetBacktestRunCandles, GetBacktestSeries, GetBacktestSeriesInput,
+    ListBacktestRuns, ListBacktestRunsInput,
 };
 pub use candles::{CandleSeries, GetCandles, GetCandlesError, GetCandlesInput};
 pub use orders::{GetOrders, GetOrdersError, GetOrdersInput, OrderSeries};
