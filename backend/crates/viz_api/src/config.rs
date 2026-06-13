@@ -236,15 +236,22 @@ mod tests {
 
     #[test]
     fn optional_bool_env_parses_and_defaults() {
+        // Absent and empty both fall back to the default.
         assert!(optional_bool_env("VIZ_TEST_ABSENT_BOOL_XYZ", true).unwrap());
         // SAFETY: unique variable name no other test reads; set/read/remove
         // happen synchronously here, so the parallel runner cannot interleave.
+        unsafe { env::set_var("VIZ_TEST_BOOL_VAR", "") };
+        let empty_defaults = optional_bool_env("VIZ_TEST_BOOL_VAR", true).unwrap();
         unsafe { env::set_var("VIZ_TEST_BOOL_VAR", "FALSE") };
-        let got = optional_bool_env("VIZ_TEST_BOOL_VAR", true).unwrap();
+        let falsey = optional_bool_env("VIZ_TEST_BOOL_VAR", true).unwrap();
+        unsafe { env::set_var("VIZ_TEST_BOOL_VAR", "on") };
+        let truthy = optional_bool_env("VIZ_TEST_BOOL_VAR", false).unwrap();
         unsafe { env::set_var("VIZ_TEST_BOOL_VAR", "nope") };
         let err = optional_bool_env("VIZ_TEST_BOOL_VAR", true).unwrap_err();
         unsafe { env::remove_var("VIZ_TEST_BOOL_VAR") };
-        assert!(!got);
+        assert!(empty_defaults, "empty value must use the default");
+        assert!(!falsey, "`FALSE` must parse to false");
+        assert!(truthy, "`on` must parse to true");
         assert!(matches!(err, ConfigError::InvalidBool { .. }));
     }
 

@@ -1,9 +1,9 @@
-//! OpenAPI document definition (utoipa).
+//! OpenAPI document definition (utoipa) and serving routes.
 //!
-//! [`ApiDoc`] aggregates every annotated path and component schema so that
-//! issue #13 can wire `utoipa-swagger-ui` and serve `/openapi.json` without
-//! re-discovering them. The struct is intentionally not mounted on the
-//! router here: this PR (issue #10) only lays the foundation.
+//! [`ApiDoc`] aggregates every annotated path and component schema.
+//! [`openapi_router`] mounts the spec at `/api/openapi.json` (always) and,
+//! optionally, Swagger UI at `/swagger-ui`. [`openapi_pretty_json`] serialises
+//! the same document for the `dump_openapi` binary (frontend codegen + CI).
 //!
 //! When you add a new endpoint:
 //!
@@ -171,5 +171,25 @@ mod tests {
             .unwrap();
         let parsed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert!(parsed["paths"]["/api/v1/monitoring/candles"].is_object());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn openapi_json_route_served_when_ui_enabled() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+
+        // The Swagger-UI branch also serves the spec at the same URL; this
+        // pins the absence of a route conflict at construction.
+        let app = openapi_router(true);
+        let resp = app
+            .oneshot(
+                Request::get("/api/openapi.json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 }
