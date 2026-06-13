@@ -1,6 +1,7 @@
 //! HTTP inbound adapter (axum 0.8).
 
 pub mod api_key;
+pub mod backtests;
 pub mod candles;
 pub mod handlers;
 pub mod openapi;

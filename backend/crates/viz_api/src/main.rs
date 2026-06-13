@@ -14,9 +14,11 @@ use std::sync::Arc;
 use adapters::inbound::http::{AppState, build_router};
 use adapters::outbound::clock::SystemClock;
 use adapters::outbound::persistence::{
-    SqlxCandleRepository, SqlxHealthChecker, SqlxOrderRepository,
+    SqlxBacktestRepository, SqlxCandleRepository, SqlxHealthChecker, SqlxOrderRepository,
 };
-use application::use_cases::{GetCandles, GetOrders, ReadinessProbe};
+use application::use_cases::{
+    GetBacktestRun, GetBacktestSeries, GetCandles, GetOrders, ListBacktestRuns, ReadinessProbe,
+};
 use std::time::Duration;
 
 use sqlx::postgres::PgPoolOptions;
@@ -79,16 +81,23 @@ async fn main() -> anyhow::Result<()> {
     let readiness = Arc::new(ReadinessProbe::new(health_checker));
 
     let candle_repo = Arc::new(SqlxCandleRepository::new(pool.clone()));
-    let order_repo = Arc::new(SqlxOrderRepository::new(pool));
+    let order_repo = Arc::new(SqlxOrderRepository::new(pool.clone()));
+    let backtest_repo = Arc::new(SqlxBacktestRepository::new(pool));
     let clock = Arc::new(SystemClock);
     let get_candles = Arc::new(GetCandles::new(candle_repo, clock.clone()));
-    let get_orders = Arc::new(GetOrders::new(order_repo, clock));
+    let get_orders = Arc::new(GetOrders::new(order_repo, clock.clone()));
+    let list_backtest_runs = Arc::new(ListBacktestRuns::new(backtest_repo.clone()));
+    let get_backtest_run = Arc::new(GetBacktestRun::new(backtest_repo.clone()));
+    let get_backtest_series = Arc::new(GetBacktestSeries::new(backtest_repo, clock));
 
     let state = AppState {
         readiness,
         api_key: Arc::new(cfg.api_key.into_bytes()),
         get_candles,
         get_orders,
+        list_backtest_runs,
+        get_backtest_run,
+        get_backtest_series,
     };
 
     let app = build_router(state);

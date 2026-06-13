@@ -337,11 +337,16 @@ mod tests {
     }
 
     fn state_with(repo: Arc<dyn OrderRepository>, clock: Arc<dyn Clock>) -> AppState {
+        let (list_backtest_runs, get_backtest_run, get_backtest_series) =
+            crate::inbound::http::state::test_support::stub_backtest_use_cases();
         AppState {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(DummyHealth))),
             api_key: Arc::new(b"unused".to_vec()),
             get_candles: Arc::new(GetCandles::new(Arc::new(DummyCandleRepo), clock.clone())),
             get_orders: Arc::new(GetOrders::new(repo, clock)),
+            list_backtest_runs,
+            get_backtest_run,
+            get_backtest_series,
         }
     }
 
