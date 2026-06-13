@@ -17,7 +17,8 @@ use adapters::outbound::persistence::{
     SqlxBacktestRepository, SqlxCandleRepository, SqlxHealthChecker, SqlxOrderRepository,
 };
 use application::use_cases::{
-    GetBacktestRun, GetBacktestSeries, GetCandles, GetOrders, ListBacktestRuns, ReadinessProbe,
+    GetBacktestRun, GetBacktestRunCandles, GetBacktestSeries, GetCandles, GetOrders,
+    ListBacktestRuns, ReadinessProbe,
 };
 use std::time::Duration;
 
@@ -88,7 +89,11 @@ async fn main() -> anyhow::Result<()> {
     let get_orders = Arc::new(GetOrders::new(order_repo, clock.clone()));
     let list_backtest_runs = Arc::new(ListBacktestRuns::new(backtest_repo.clone()));
     let get_backtest_run = Arc::new(GetBacktestRun::new(backtest_repo.clone()));
-    let get_backtest_series = Arc::new(GetBacktestSeries::new(backtest_repo, clock));
+    let get_backtest_series = Arc::new(GetBacktestSeries::new(backtest_repo.clone(), clock));
+    let get_backtest_candles = Arc::new(GetBacktestRunCandles::new(
+        backtest_repo,
+        get_candles.clone(),
+    ));
 
     let state = AppState {
         readiness,
@@ -98,6 +103,7 @@ async fn main() -> anyhow::Result<()> {
         list_backtest_runs,
         get_backtest_run,
         get_backtest_series,
+        get_backtest_candles,
     };
 
     let app = build_router(state);

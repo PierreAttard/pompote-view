@@ -26,9 +26,14 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use application::ports::RepositoryError;
-use application::use_cases::{GetBacktestError, GetBacktestSeriesInput, ListBacktestRunsInput};
+use application::use_cases::{
+    GetBacktestCandlesError, GetBacktestError, GetBacktestSeriesInput, GetCandlesError,
+    ListBacktestRunsInput,
+};
 use domain::backtest::{BacktestQueryError, BacktestStatus};
+use domain::candle::{CandleQueryError, Timeframe};
 
+use super::candles::CandleDto;
 use super::state::AppState;
 
 /// `Decimal -> f64` down-cast used by every DTO in this module.
@@ -229,6 +234,17 @@ impl From<domain::decision::Decision> for DecisionDto {
     }
 }
 
+/// Response for the run candles endpoint: the OHLC series plus a source hint.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BacktestCandlesDto {
+    /// `candles_5s` when the run window is covered, `none` for the degraded
+    /// timeline-only view (no OHLC background available).
+    #[schema(example = "candles_5s")]
+    pub source: String,
+    /// Aggregated OHLC buckets (empty when `source = none`).
+    pub candles: Vec<CandleDto>,
+}
+
 // ---------------------------------------------------------------------------
 // Query params
 // ---------------------------------------------------------------------------
@@ -251,6 +267,13 @@ pub struct RunListParams {
     /// Row cap (defaults to and rejected above `MAX_BACKTEST_RUNS`).
     #[serde(default)]
     pub limit: Option<usize>,
+}
+
+/// Query parameters for the run candles endpoint.
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+pub struct CandlesParams {
+    /// Aggregation width (must be one of [`Timeframe::ALLOWED`]).
+    pub timeframe: String,
 }
 
 /// Query parameters for a run-scoped series (orders / fills / decisions).
@@ -314,6 +337,10 @@ pub enum BacktestApiError {
     TooManyRows { requested: usize, max: usize },
     /// The `status` filter value is not a valid [`BacktestStatus`].
     InvalidStatus,
+    /// The `timeframe` value is not a valid [`Timeframe`].
+    InvalidTimeframe,
+    /// The requested window would exceed the candle bucket cap.
+    TooManyPoints { requested: usize, max: usize },
     /// Downstream datastore unreachable.
     DbUnavailable(String),
     /// Unexpected internal error (schema drift, decode failure, …).
@@ -369,6 +396,28 @@ impl IntoResponse for BacktestApiError {
                 }),
             )
                 .into_response(),
+            Self::InvalidTimeframe => (
+                StatusCode::BAD_REQUEST,
+                Json(BacktestErrorBody {
+                    error: "invalid_timeframe",
+                    message: Some("unknown `timeframe` value".into()),
+                    requested: None,
+                    max: None,
+                    allowed: Some(Timeframe::ALLOWED),
+                }),
+            )
+                .into_response(),
+            Self::TooManyPoints { requested, max } => (
+                StatusCode::BAD_REQUEST,
+                Json(BacktestErrorBody {
+                    error: "too_many_points",
+                    message: Some(format!("requested {requested} points, max {max}")),
+                    requested: Some(requested),
+                    max: Some(max),
+                    allowed: None,
+                }),
+            )
+                .into_response(),
             Self::DbUnavailable(detail) => {
                 tracing::warn!(error = %detail, "backtest repository unavailable");
                 (
@@ -405,6 +454,35 @@ impl From<GetBacktestError> for BacktestApiError {
             }
             GetBacktestError::Repository(RepositoryError::Unavailable(d)) => Self::DbUnavailable(d),
             GetBacktestError::Repository(RepositoryError::Internal(d)) => Self::Internal(d),
+        }
+    }
+}
+
+impl From<GetBacktestCandlesError> for BacktestApiError {
+    fn from(err: GetBacktestCandlesError) -> Self {
+        match err {
+            GetBacktestCandlesError::RunNotFound => Self::NotFound,
+            GetBacktestCandlesError::Repository(RepositoryError::Unavailable(d)) => {
+                Self::DbUnavailable(d)
+            }
+            GetBacktestCandlesError::Repository(RepositoryError::Internal(d)) => Self::Internal(d),
+            GetBacktestCandlesError::Candles(GetCandlesError::Domain(
+                CandleQueryError::InvalidRange,
+            )) => Self::InvalidRange,
+            GetBacktestCandlesError::Candles(GetCandlesError::Domain(
+                CandleQueryError::TooManyPoints { requested, max },
+            )) => Self::TooManyPoints { requested, max },
+            // The timeframe is validated at the HTTP boundary before the use
+            // case runs, so this arm is defensive (should be unreachable).
+            GetBacktestCandlesError::Candles(GetCandlesError::Domain(
+                CandleQueryError::InvalidTimeframe(_),
+            )) => Self::InvalidTimeframe,
+            GetBacktestCandlesError::Candles(GetCandlesError::Repository(
+                RepositoryError::Unavailable(d),
+            )) => Self::DbUnavailable(d),
+            GetBacktestCandlesError::Candles(GetCandlesError::Repository(
+                RepositoryError::Internal(d),
+            )) => Self::Internal(d),
         }
     }
 }
@@ -562,6 +640,39 @@ pub async fn get_backtest_decisions(
     Ok(Json(series.into_iter().map(Into::into).collect()))
 }
 
+/// Handler for `GET /api/v1/monitoring/backtests/{run_id}/candles`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/monitoring/backtests/{run_id}/candles",
+    tag = "monitoring",
+    params(
+        ("run_id" = Uuid, Path, description = "Backtest run identifier"),
+        CandlesParams,
+    ),
+    responses(
+        (status = 200, description = "Aggregated candles_5s over the run's market window, with a `source` hint.", body = BacktestCandlesDto),
+        (status = 400, description = "Invalid timeframe or window exceeding the bucket cap.", body = BacktestErrorBody),
+        (status = 401, description = "Missing or invalid `X-API-Key` header."),
+        (status = 404, description = "No run with that id.", body = BacktestErrorBody),
+        (status = 503, description = "Datastore temporarily unreachable.", body = BacktestErrorBody),
+        (status = 500, description = "Unexpected internal error.", body = BacktestErrorBody),
+    ),
+    security(("x_api_key" = [])),
+)]
+pub async fn get_backtest_candles(
+    State(state): State<AppState>,
+    Path(run_id): Path<Uuid>,
+    Query(params): Query<CandlesParams>,
+) -> Result<Json<BacktestCandlesDto>, BacktestApiError> {
+    let timeframe = Timeframe::try_from(params.timeframe.as_str())
+        .map_err(|_| BacktestApiError::InvalidTimeframe)?;
+    let out = state.get_backtest_candles.run(run_id, timeframe).await?;
+    Ok(Json(BacktestCandlesDto {
+        source: out.source.as_str().to_string(),
+        candles: out.candles.into_iter().map(CandleDto::from).collect(),
+    }))
+}
+
 /// Builds a [`GetBacktestSeriesInput`] from a run id and query params.
 fn series_input(run_id: Uuid, params: SeriesParams) -> GetBacktestSeriesInput {
     GetBacktestSeriesInput {
@@ -578,9 +689,12 @@ mod tests {
     use std::sync::Arc;
 
     use application::ports::{
-        BacktestRepository, BacktestRunListQuery, BacktestSeriesQuery, Clock, RepositoryError,
+        BacktestRepository, BacktestRunListQuery, BacktestSeriesQuery, CandleQuery,
+        CandleRepository, Clock, RepositoryError,
     };
-    use application::use_cases::{GetBacktestRun, GetBacktestSeries, ListBacktestRuns};
+    use application::use_cases::{
+        GetBacktestRun, GetBacktestRunCandles, GetBacktestSeries, GetCandles, ListBacktestRuns,
+    };
     use async_trait::async_trait;
     use axum::{
         Router,
@@ -590,6 +704,7 @@ mod tests {
     };
     use chrono::TimeZone;
     use domain::backtest::{BacktestOrder, BacktestRun, BacktestRunDetail, BacktestStatus};
+    use domain::candle::Candle;
     use domain::decision::Decision;
     use domain::fill::Fill;
     use domain::order::OrderSide;
@@ -627,6 +742,19 @@ mod tests {
         orders: Vec<BacktestOrder>,
         fills: Vec<Fill>,
         decisions: Vec<Decision>,
+        /// Candles served by the composed `GetCandles` use case in `app()`.
+        candles: Vec<Candle>,
+    }
+
+    struct CandleStub {
+        candles: Vec<Candle>,
+    }
+
+    #[async_trait]
+    impl CandleRepository for CandleStub {
+        async fn fetch_aggregated(&self, _q: &CandleQuery) -> Result<Vec<Candle>, RepositoryError> {
+            Ok(self.candles.clone())
+        }
     }
 
     #[async_trait]
@@ -668,10 +796,16 @@ mod tests {
     }
 
     fn app(repo: Arc<StubRepo>) -> Router {
+        let candle_repo = Arc::new(CandleStub {
+            candles: repo.candles.clone(),
+        });
         let list = Arc::new(ListBacktestRuns::new(repo.clone()));
         let detail = Arc::new(GetBacktestRun::new(repo.clone()));
-        let series = Arc::new(GetBacktestSeries::new(repo, Arc::new(FixedClock)));
-        let state = super::super::state::test_support::state_with_backtests(list, detail, series);
+        let series = Arc::new(GetBacktestSeries::new(repo.clone(), Arc::new(FixedClock)));
+        let get_candles = Arc::new(GetCandles::new(candle_repo, Arc::new(FixedClock)));
+        let candles = Arc::new(GetBacktestRunCandles::new(repo, get_candles));
+        let state =
+            super::super::state::test_support::state_with_backtests(list, detail, series, candles);
         Router::new()
             .route("/api/v1/monitoring/backtests", get(list_backtests))
             .route("/api/v1/monitoring/backtests/{run_id}", get(get_backtest))
@@ -686,6 +820,10 @@ mod tests {
             .route(
                 "/api/v1/monitoring/backtests/{run_id}/decisions",
                 get(get_backtest_decisions),
+            )
+            .route(
+                "/api/v1/monitoring/backtests/{run_id}/candles",
+                get(get_backtest_candles),
             )
             .with_state(state)
     }
@@ -918,5 +1056,110 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
         assert_eq!(body_json(resp).await["error"], "invalid_range");
+    }
+
+    fn candle() -> Candle {
+        Candle {
+            open_time: t(0),
+            open: dec!(100),
+            high: dec!(110),
+            low: dec!(95),
+            close: dec!(105),
+            volume: dec!(12.5),
+        }
+    }
+
+    fn run_detail() -> BacktestRunDetail {
+        BacktestRunDetail {
+            run: sample_run(),
+            config_snapshot: serde_json::json!({}),
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn candles_returns_series_with_source_hint() {
+        let app = app(Arc::new(StubRepo {
+            detail: Some(run_detail()),
+            candles: vec![candle()],
+            ..Default::default()
+        }));
+        let resp = app
+            .oneshot(
+                Request::get(
+                    "/api/v1/monitoring/backtests/00000000-0000-0000-0000-000000000001/candles\
+                     ?timeframe=1h",
+                )
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body["source"], "candles_5s");
+        assert_eq!(body["candles"].as_array().unwrap().len(), 1);
+        assert!((body["candles"][0]["c"].as_f64().unwrap() - 105.0).abs() < 1e-6);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn candles_source_none_when_window_uncovered() {
+        let app = app(Arc::new(StubRepo {
+            detail: Some(run_detail()),
+            candles: vec![],
+            ..Default::default()
+        }));
+        let resp = app
+            .oneshot(
+                Request::get(
+                    "/api/v1/monitoring/backtests/00000000-0000-0000-0000-000000000001/candles\
+                     ?timeframe=1h",
+                )
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body["source"], "none");
+        assert!(body["candles"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn candles_reject_invalid_timeframe_with_400() {
+        let app = app(Arc::new(StubRepo {
+            detail: Some(run_detail()),
+            ..Default::default()
+        }));
+        let resp = app
+            .oneshot(
+                Request::get(
+                    "/api/v1/monitoring/backtests/00000000-0000-0000-0000-000000000001/candles\
+                     ?timeframe=bogus",
+                )
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(body_json(resp).await["error"], "invalid_timeframe");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn candles_404_when_run_absent() {
+        let app = app(Arc::new(StubRepo::default()));
+        let resp = app
+            .oneshot(
+                Request::get(
+                    "/api/v1/monitoring/backtests/00000000-0000-0000-0000-000000000009/candles\
+                     ?timeframe=1h",
+                )
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 }
