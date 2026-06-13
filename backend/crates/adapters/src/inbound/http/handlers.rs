@@ -90,6 +90,8 @@ mod tests {
     }
 
     fn router_for(probe: ReadinessProbe) -> Router {
+        let (list_backtest_runs, get_backtest_run, get_backtest_series) =
+            crate::inbound::http::state::test_support::stub_backtest_use_cases();
         let state = AppState {
             readiness: Arc::new(probe),
             api_key: Arc::new(b"unused".to_vec()),
@@ -98,6 +100,9 @@ mod tests {
                 Arc::new(EmptyOrderRepo),
                 Arc::new(UtcNowClock),
             )),
+            list_backtest_runs,
+            get_backtest_run,
+            get_backtest_series,
         };
         Router::new()
             .route("/healthz", get(healthz))

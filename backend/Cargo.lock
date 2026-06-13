@@ -83,6 +83,7 @@ dependencies = [
  "domain",
  "rust_decimal",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "uuid",
@@ -458,6 +459,7 @@ dependencies = [
  "chrono",
  "rust_decimal",
  "serde",
+ "serde_json",
  "thiserror",
  "uuid",
 ]

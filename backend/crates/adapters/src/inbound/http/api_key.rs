@@ -111,6 +111,8 @@ mod tests {
     }
 
     fn test_state(api_key: &str) -> AppState {
+        let (list_backtest_runs, get_backtest_run, get_backtest_series) =
+            crate::inbound::http::state::test_support::stub_backtest_use_cases();
         AppState {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(DummyHealth))),
             api_key: Arc::new(api_key.as_bytes().to_vec()),
@@ -119,6 +121,9 @@ mod tests {
                 Arc::new(EmptyOrderRepo),
                 Arc::new(UtcNowClock),
             )),
+            list_backtest_runs,
+            get_backtest_run,
+            get_backtest_series,
         }
     }
 

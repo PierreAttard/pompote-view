@@ -24,3 +24,6 @@ tokio = { workspace = true }
 # Used in unit tests of the orders use case to build `Decimal::ZERO`
 # placeholders without polluting the production dependency surface.
 rust_decimal = { workspace = true }
+# Used in backtest use-case tests to build a non-trivial `config_snapshot`
+# `Value` (test-only; the domain already depends on serde_json for the entity).
+serde_json = { workspace = true }

@@ -26,6 +26,7 @@ use cases de `application`.
 | `DATABASE_URL`      | oui     | —                | URL Postgres du rôle `pompote_viz_reader` (SELECT only).                    |
 | `VIZ_API_KEY`       | oui     | —                | Valeur attendue du header `X-API-Key`. Minimum 16 octets (refus au boot).   |
 | `VIZ_API_BIND_ADDR` | non     | `0.0.0.0:3100`   | Adresse d'écoute du serveur axum.                                           |
+| `VIZ_DB_STATEMENT_TIMEOUT_MS` | non | `5000`     | `statement_timeout` par connexion (ms), garde-fou anti-contention sur le primaire Timescale. Une valeur non entière est refusée au boot. |
 | `RUST_LOG`          | non     | `info`           | Filtre `tracing-subscriber` (ex. `info,sqlx=warn`).                         |
 
 > ⚠️ Aucune valeur par défaut n'est fournie pour `DATABASE_URL` ni pour

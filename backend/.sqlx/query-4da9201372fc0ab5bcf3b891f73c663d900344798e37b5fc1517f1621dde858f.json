@@ -1,0 +1,61 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id          AS \"id!: Uuid\",\n                decision_id AS \"decision_id!: Uuid\",\n                side        AS \"side!\",\n                COALESCE(limit_price, expected_price) AS \"price?: Decimal\",\n                quantity    AS \"quantity!: Decimal\",\n                status      AS \"status!\",\n                market_ts   AS \"market_ts!: chrono::DateTime<chrono::Utc>\"\n            FROM orders_backtest\n            WHERE run_id = $1\n              AND market_ts >= $2\n              AND market_ts < $3\n            ORDER BY market_ts ASC\n            LIMIT $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "decision_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "side!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "price?: Decimal",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "quantity!: Decimal",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "status!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "market_ts!: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      null,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "4da9201372fc0ab5bcf3b891f73c663d900344798e37b5fc1517f1621dde858f"
+}

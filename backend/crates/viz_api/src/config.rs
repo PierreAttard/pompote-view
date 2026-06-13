@@ -22,6 +22,15 @@ const DEFAULT_BIND_ADDR: &str = "0.0.0.0:3100";
 /// to a longer random value in production is still recommended.
 pub const MIN_API_KEY_LEN: usize = 16;
 
+/// Default per-connection `statement_timeout`, in milliseconds.
+///
+/// Acts as an anti-contention guardrail on the shared Timescale primary: a
+/// runaway viz `SELECT` (cap-busting scan, missing index on a cold backtest
+/// window) is killed by Postgres after this delay instead of competing with
+/// the `robot_rust` producer pipeline. 5 s is comfortably above a capped
+/// (<= 5000 rows/points) query yet well below a human's patience threshold.
+pub const DEFAULT_DB_STATEMENT_TIMEOUT_MS: u64 = 5000;
+
 /// Parsed configuration for the viz API.
 ///
 /// `Debug` is implemented manually to redact sensitive fields (`database_url`
@@ -36,6 +45,14 @@ pub struct AppConfig {
     pub api_key: String,
     /// Socket address the axum server will bind to.
     pub bind_addr: String,
+    /// Per-connection `statement_timeout` in milliseconds, applied via the
+    /// pool's `after_connect` hook (see `main.rs`).
+    ///
+    /// A value of `0` follows Postgres semantics and **disables** the timeout
+    /// entirely. This is a deliberate operator escape hatch (e.g. local
+    /// debugging of a slow query); it is distinct from a malformed value,
+    /// which is rejected at boot (`ConfigError::InvalidInt`).
+    pub db_statement_timeout_ms: u64,
 }
 
 impl std::fmt::Debug for AppConfig {
@@ -44,6 +61,7 @@ impl std::fmt::Debug for AppConfig {
             .field("database_url", &"<redacted>")
             .field("api_key", &"<redacted>")
             .field("bind_addr", &self.bind_addr)
+            .field("db_statement_timeout_ms", &self.db_statement_timeout_ms)
             .finish()
     }
 }
@@ -65,6 +83,10 @@ pub enum ConfigError {
     /// `std::env::var` returned a non-UTF-8 / non-Unicode error.
     #[error("environment variable `{var}` is not valid UTF-8")]
     NotUnicode { var: &'static str },
+
+    /// An integer-typed env variable was provided but could not be parsed.
+    #[error("environment variable `{var}` is not a valid integer: `{value}`")]
+    InvalidInt { var: &'static str, value: String },
 }
 
 impl AppConfig {
@@ -73,6 +95,8 @@ impl AppConfig {
     /// - `DATABASE_URL` (required, non-empty)
     /// - `VIZ_API_KEY`  (required, non-empty, >= [`MIN_API_KEY_LEN`] bytes)
     /// - `VIZ_API_BIND_ADDR` (optional, default `0.0.0.0:3100`)
+    /// - `VIZ_DB_STATEMENT_TIMEOUT_MS` (optional, default
+    ///   [`DEFAULT_DB_STATEMENT_TIMEOUT_MS`])
     pub fn from_env() -> Result<Self, ConfigError> {
         let database_url = required_env("DATABASE_URL")?;
         let api_key = required_env("VIZ_API_KEY")?;
@@ -87,10 +111,16 @@ impl AppConfig {
             .filter(|v| !v.is_empty())
             .unwrap_or_else(|| DEFAULT_BIND_ADDR.to_string());
 
+        let db_statement_timeout_ms = optional_u64_env(
+            "VIZ_DB_STATEMENT_TIMEOUT_MS",
+            DEFAULT_DB_STATEMENT_TIMEOUT_MS,
+        )?;
+
         Ok(Self {
             database_url,
             api_key,
             bind_addr,
+            db_statement_timeout_ms,
         })
     }
 }
@@ -112,6 +142,20 @@ fn optional_env(name: &'static str) -> Result<Option<String>, ConfigError> {
     }
 }
 
+/// Reads an optional `u64` env variable, falling back to `default` when the
+/// variable is absent or empty. A present-but-unparseable value is a hard
+/// error (`InvalidInt`) rather than a silent fallback: a typo in
+/// `VIZ_DB_STATEMENT_TIMEOUT_MS` must fail fast, not disable the guardrail.
+fn optional_u64_env(name: &'static str, default: u64) -> Result<u64, ConfigError> {
+    match optional_env(name)?.filter(|v| !v.is_empty()) {
+        None => Ok(default),
+        Some(v) => v.parse::<u64>().map_err(|_| ConfigError::InvalidInt {
+            var: name,
+            value: v,
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,6 +166,7 @@ mod tests {
             database_url: "postgres://user:supersecretpassword@localhost/db".to_string(),
             api_key: "verysecretapikey1234567890".to_string(),
             bind_addr: "127.0.0.1:3100".to_string(),
+            db_statement_timeout_ms: DEFAULT_DB_STATEMENT_TIMEOUT_MS,
         };
 
         let dbg = format!("{:?}", cfg);
@@ -141,6 +186,29 @@ mod tests {
         assert!(
             dbg.contains("127.0.0.1:3100"),
             "Debug output should still expose non-sensitive bind_addr: {dbg}"
+        );
+    }
+
+    #[test]
+    fn optional_u64_env_falls_back_when_absent() {
+        // Use a variable name that is extremely unlikely to be set in the
+        // test environment so the absent branch is exercised deterministically.
+        let got = optional_u64_env("VIZ_TEST_ABSENT_TIMEOUT_VAR_XYZ", 5000).unwrap();
+        assert_eq!(got, 5000);
+    }
+
+    #[test]
+    fn optional_u64_env_rejects_non_integer() {
+        // SAFETY: `set_var`/`remove_var` mutate process-global state, but this
+        // test uses a unique variable name no other test reads, and calls
+        // `optional_u64_env` synchronously between set and remove — so the
+        // parallel test runner cannot observe an interleaved value.
+        unsafe { env::set_var("VIZ_TEST_BAD_TIMEOUT_VAR", "not-a-number") };
+        let err = optional_u64_env("VIZ_TEST_BAD_TIMEOUT_VAR", 5000).unwrap_err();
+        unsafe { env::remove_var("VIZ_TEST_BAD_TIMEOUT_VAR") };
+        assert!(
+            matches!(err, ConfigError::InvalidInt { .. }),
+            "expected InvalidInt, got {err:?}"
         );
     }
 }

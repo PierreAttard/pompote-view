@@ -1,0 +1,49 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                d.id           AS \"id!: Uuid\",\n                d.market_ts    AS \"market_ts!: chrono::DateTime<chrono::Utc>\",\n                d.reason       AS \"reason!\",\n                d.orders_count AS \"orders_count!\",\n                c.snapshot     AS \"snapshot?: serde_json::Value\"\n            FROM strategy_decisions_backtest d\n            LEFT JOIN decision_market_context_backtest c\n                   ON c.run_id = d.run_id AND c.decision_id = d.id\n            WHERE d.run_id = $1\n              AND d.market_ts >= $2\n              AND d.market_ts < $3\n            ORDER BY d.market_ts ASC\n            LIMIT $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "market_ts!: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "reason!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "orders_count!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "snapshot?: serde_json::Value",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c7180a8c05a007b1a078e1655a46b949c6f8929973080c07d3a3fff5f36fa13f"
+}

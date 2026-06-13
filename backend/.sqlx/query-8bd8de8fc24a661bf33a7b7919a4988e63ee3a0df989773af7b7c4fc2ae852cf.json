@@ -1,0 +1,110 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id               AS \"id!: Uuid\",\n                strategy_kind    AS \"strategy_kind!\",\n                strategy_id      AS \"strategy_id?: Uuid\",\n                exchange         AS \"exchange!\",\n                symbol           AS \"symbol!\",\n                data_range_start AS \"data_range_start!: chrono::DateTime<chrono::Utc>\",\n                data_range_end   AS \"data_range_end!: chrono::DateTime<chrono::Utc>\",\n                started_at       AS \"started_at!: chrono::DateTime<chrono::Utc>\",\n                ended_at         AS \"ended_at?: chrono::DateTime<chrono::Utc>\",\n                status           AS \"status!\",\n                slippage_bps     AS \"slippage_bps!\",\n                latency_ms       AS \"latency_ms!\",\n                fee_kraken_bps   AS \"fee_kraken_bps!\",\n                fee_binance_bps  AS \"fee_binance_bps!\",\n                error            AS \"error?\"\n            FROM backtest_runs\n            WHERE ($1::text IS NULL OR status = $1)\n              AND ($2::text IS NULL OR strategy_kind = $2)\n              AND ($3::text IS NULL OR exchange = $3)\n              AND ($4::text IS NULL OR symbol = $4)\n            ORDER BY started_at DESC\n            LIMIT $5\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "strategy_kind!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "strategy_id?: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "exchange!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "symbol!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "data_range_start!: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "data_range_end!: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "started_at!: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "ended_at?: chrono::DateTime<chrono::Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "status!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "slippage_bps!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 11,
+        "name": "latency_ms!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 12,
+        "name": "fee_kraken_bps!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 13,
+        "name": "fee_binance_bps!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "error?",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "8bd8de8fc24a661bf33a7b7919a4988e63ee3a0df989773af7b7c4fc2ae852cf"
+}

@@ -20,7 +20,7 @@ use utoipa::{
     openapi::security::{ApiKey, ApiKeyValue, SecurityScheme},
 };
 
-use super::{candles, orders};
+use super::{backtests, candles, orders};
 
 /// Top-level OpenAPI document for the viz backend.
 #[derive(OpenApi)]
@@ -35,6 +35,11 @@ use super::{candles, orders};
     paths(
         candles::get_candles,
         orders::get_orders,
+        backtests::list_backtests,
+        backtests::get_backtest,
+        backtests::get_backtest_orders,
+        backtests::get_backtest_fills,
+        backtests::get_backtest_decisions,
     ),
     components(
         schemas(
@@ -42,6 +47,12 @@ use super::{candles, orders};
             candles::CandleErrorBody,
             orders::OrderDto,
             orders::OrderErrorBody,
+            backtests::BacktestRunSummaryDto,
+            backtests::BacktestRunDetailDto,
+            backtests::BacktestOrderDto,
+            backtests::FillDto,
+            backtests::DecisionDto,
+            backtests::BacktestErrorBody,
         )
     ),
     tags(
@@ -83,8 +94,11 @@ mod tests {
         let json = serde_json::to_string(&doc).expect("OpenAPI doc must serialise");
         assert!(json.contains("/api/v1/monitoring/candles"));
         assert!(json.contains("/api/v1/monitoring/strategies/{id}/orders"));
+        assert!(json.contains("/api/v1/monitoring/backtests"));
+        assert!(json.contains("/api/v1/monitoring/backtests/{run_id}/decisions"));
         assert!(json.contains("CandleDto"));
         assert!(json.contains("OrderDto"));
+        assert!(json.contains("BacktestRunDetailDto"));
         assert!(json.contains("x_api_key"));
     }
 }
