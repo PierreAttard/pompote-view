@@ -16,6 +16,9 @@ use serde_json::Value;
 use uuid::Uuid;
 
 /// One strategy decision as seen by the viz API.
+///
+/// No `Eq`: the optional `snapshot` is a `serde_json::Value`, which carries
+/// `f64` (`Value::Number`) and is therefore not `Eq`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Decision {
     /// Primary key (`strategy_decisions[_backtest].id`).

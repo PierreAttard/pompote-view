@@ -310,6 +310,26 @@ mod tests {
         Utc.with_ymd_and_hms(year, month, day, hour, 0, 0).unwrap()
     }
 
+    fn sample_run() -> BacktestRun {
+        BacktestRun {
+            id: Uuid::nil(),
+            strategy_kind: "ma_cross".into(),
+            strategy_id: None,
+            exchange: "binance".into(),
+            symbol: "BTCUSDT".into(),
+            data_range_start: t(2026, 5, 1, 0),
+            data_range_end: t(2026, 5, 2, 0),
+            started_at: t(2026, 6, 1, 9),
+            ended_at: Some(t(2026, 6, 1, 9)),
+            status: BacktestStatus::Completed,
+            slippage_bps: 5,
+            latency_ms: 100,
+            fee_kraken_bps: 26,
+            fee_binance_bps: 10,
+            error: None,
+        }
+    }
+
     fn series(repo: Arc<FakeRepo>) -> GetBacktestSeries {
         GetBacktestSeries::new(repo, Arc::new(FixedClock(t(2026, 6, 1, 12))))
     }
@@ -402,6 +422,22 @@ mod tests {
     async fn get_run_returns_none_when_absent() {
         let uc = GetBacktestRun::new(Arc::new(FakeRepo::default()));
         assert!(uc.run(Uuid::nil()).await.unwrap().is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn get_run_returns_detail_with_snapshot() {
+        let snapshot = serde_json::json!({ "scenario_name": "c0", "warmup": 200 });
+        let repo = Arc::new(FakeRepo {
+            detail: Some(BacktestRunDetail {
+                run: sample_run(),
+                config_snapshot: snapshot.clone(),
+            }),
+            ..Default::default()
+        });
+        let uc = GetBacktestRun::new(repo);
+        let got = uc.run(Uuid::nil()).await.unwrap().expect("run present");
+        assert_eq!(got.run.status, BacktestStatus::Completed);
+        assert_eq!(got.config_snapshot, snapshot);
     }
 
     #[tokio::test(flavor = "current_thread")]

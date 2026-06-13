@@ -67,6 +67,9 @@ pub struct BacktestRun {
 /// `jsonb_typeof = 'object'`). It is forwarded to the front-end unchanged; the
 /// viz backend never interprets its contents (e.g. a `scenario_name` for C0
 /// synthetic runs lives inside this object, not as a dedicated column).
+///
+/// No `Eq`: `serde_json::Value` carries `f64` (`Value::Number`), which is not
+/// `Eq`; `PartialEq` suffices for tests and equality checks.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BacktestRunDetail {
     /// The run summary.

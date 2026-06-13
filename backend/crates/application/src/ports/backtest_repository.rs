@@ -57,8 +57,13 @@ pub struct BacktestSeriesQuery {
 /// Port: read-only access to backtest runs and their run-scoped series.
 #[async_trait]
 pub trait BacktestRepository: Send + Sync {
-    /// Lists runs matching `query`, ordered by `started_at DESC`, capped at
-    /// `query.limit`.
+    /// Lists runs matching `query`, capped at `query.limit`.
+    ///
+    /// Ordered by wall-clock `started_at DESC` **by design**: a run listing is
+    /// a selector, not a market-clock series, so the natural ordering is "most
+    /// recently launched first" — this is the one place `created_at`-style
+    /// wall-clock ordering is appropriate, distinct from the `market_ts` axis
+    /// used by every series query.
     async fn list_runs(
         &self,
         query: &BacktestRunListQuery,

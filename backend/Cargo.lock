@@ -83,6 +83,7 @@ dependencies = [
  "domain",
  "rust_decimal",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "uuid",
