@@ -60,3 +60,19 @@ La CI échoue si `types.gen.ts` n'est pas à jour vis-à-vis de `openapi.json`
 (et le job backend échoue si `openapi.json` ne correspond plus aux annotations
 `utoipa`). Le client `fetch` typé qui consomme ces types arrive avec l'issue
 #16 (Lot 3).
+
+## Configuration (variables d'environnement serveur)
+
+Les pages backtest (`/backtests`) appellent le backend **côté serveur**
+(`+page.server.ts`) pour que la clé API ne soit **jamais** exposée au
+navigateur. Deux variables sont lues via `$env/dynamic/private` :
+
+| Variable      | Défaut                  | Description                                      |
+| ------------- | ----------------------- | ------------------------------------------------ |
+| `BACKEND_URL` | `http://127.0.0.1:3100` | URL du backend viz.                              |
+| `VIZ_API_KEY` | —                       | Clé envoyée dans `X-API-Key` (= clé du backend). |
+
+> ⚠️ **Privées** : ces variables sont serveur-only (jamais `PUBLIC_*`). Aucune
+> `.env.example` n'est commité (même raison que côté backend) ; en local, place
+> ces valeurs dans `frontend/.env` (gitignoré). Sans `VIZ_API_KEY`, les pages
+> backtest renvoient une erreur backend (401/500).
