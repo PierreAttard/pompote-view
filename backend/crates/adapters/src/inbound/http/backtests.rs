@@ -625,6 +625,8 @@ mod tests {
         runs: Vec<BacktestRun>,
         detail: Option<BacktestRunDetail>,
         orders: Vec<BacktestOrder>,
+        fills: Vec<Fill>,
+        decisions: Vec<Decision>,
     }
 
     #[async_trait]
@@ -648,13 +650,13 @@ mod tests {
             &self,
             _q: &BacktestSeriesQuery,
         ) -> Result<Vec<Fill>, RepositoryError> {
-            Ok(vec![])
+            Ok(self.fills.clone())
         }
         async fn fetch_decisions(
             &self,
             _q: &BacktestSeriesQuery,
         ) -> Result<Vec<Decision>, RepositoryError> {
-            Ok(vec![])
+            Ok(self.decisions.clone())
         }
     }
 
@@ -676,6 +678,14 @@ mod tests {
             .route(
                 "/api/v1/monitoring/backtests/{run_id}/orders",
                 get(get_backtest_orders),
+            )
+            .route(
+                "/api/v1/monitoring/backtests/{run_id}/fills",
+                get(get_backtest_fills),
+            )
+            .route(
+                "/api/v1/monitoring/backtests/{run_id}/decisions",
+                get(get_backtest_decisions),
             )
             .with_state(state)
     }
@@ -804,6 +814,92 @@ mod tests {
             "2026-06-01T12:00:00Z"
         );
         assert!((body[0]["price"].as_f64().unwrap() - 75000.5).abs() < 1e-6);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn fills_happy_path_maps_dto() {
+        let fill = Fill {
+            fill_id: Uuid::from_u128(0x33),
+            order_id: Uuid::from_u128(0x11),
+            side: OrderSide::Sell,
+            price: dec!(75.05),
+            quantity: dec!(0.66),
+            fee: dec!(0.0123),
+            fee_asset: "USDT".into(),
+            market_ts: t(13),
+        };
+        let app = app(Arc::new(StubRepo {
+            fills: vec![fill],
+            ..Default::default()
+        }));
+        let resp = app
+            .oneshot(
+                Request::get(
+                    "/api/v1/monitoring/backtests/00000000-0000-0000-0000-000000000001/fills\
+                     ?from=2026-06-01T00:00:00Z&to=2026-06-01T20:00:00Z",
+                )
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body[0]["side"], "sell");
+        assert_eq!(body[0]["fee_asset"], "USDT");
+        assert!((body[0]["fee"].as_f64().unwrap() - 0.0123).abs() < 1e-9);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decisions_happy_path_forwards_snapshot() {
+        let decision = Decision {
+            decision_id: Uuid::from_u128(0x44),
+            market_ts: t(14),
+            reason: "rsi_oversold".into(),
+            orders_count: 1,
+            snapshot: Some(serde_json::json!({"rsi": 28.1})),
+        };
+        let app = app(Arc::new(StubRepo {
+            decisions: vec![decision],
+            ..Default::default()
+        }));
+        let resp = app
+            .oneshot(
+                Request::get(
+                    "/api/v1/monitoring/backtests/00000000-0000-0000-0000-000000000001/decisions\
+                     ?from=2026-06-01T00:00:00Z&to=2026-06-01T20:00:00Z",
+                )
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body[0]["reason"], "rsi_oversold");
+        assert_eq!(body[0]["orders_count"], 1);
+        assert!((body[0]["snapshot"]["rsi"].as_f64().unwrap() - 28.1).abs() < 1e-9);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn orders_reject_over_cap_with_400_and_series_max() {
+        let app = app(Arc::new(StubRepo::default()));
+        let resp = app
+            .oneshot(
+                Request::get(
+                    "/api/v1/monitoring/backtests/00000000-0000-0000-0000-000000000001/orders\
+                     ?from=2026-06-01T00:00:00Z&to=2026-06-01T20:00:00Z&limit=5001",
+                )
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = body_json(resp).await;
+        assert_eq!(body["error"], "too_many_rows");
+        assert_eq!(body["max"], 5000); // series cap = MAX_ORDER_ROWS
+        assert_eq!(body["requested"], 5001);
     }
 
     #[tokio::test(flavor = "current_thread")]
