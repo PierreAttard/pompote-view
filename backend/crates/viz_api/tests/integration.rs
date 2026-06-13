@@ -128,7 +128,11 @@ async fn apply_migrations(pool: &PgPool) {
         .unwrap_or_else(|e| panic!("read migrations dir {dir}: {e}"))
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .filter(|p| p.to_string_lossy().ends_with(".up.sql"))
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.ends_with(".up.sql"))
+        })
         .collect();
     files.sort();
     assert!(!files.is_empty(), "no *.up.sql migrations found in {dir}");
