@@ -16,6 +16,11 @@ rust-version.workspace = true
 name = "viz_api"
 path = "src/main.rs"
 
+# Prints the OpenAPI spec as JSON (frontend codegen + CI freshness check).
+[[bin]]
+name = "dump_openapi"
+path = "src/bin/dump_openapi.rs"
+
 [dependencies]
 application.workspace = true
 adapters.workspace = true

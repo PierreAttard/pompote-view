@@ -15,10 +15,12 @@
 //! reference on every protected handler; the `X-API-Key` header is read by
 //! the [`super::api_key::require_api_key`] middleware.
 
+use axum::{Json, Router, routing::get};
 use utoipa::{
     Modify, OpenApi,
     openapi::security::{ApiKey, ApiKeyValue, SecurityScheme},
 };
+use utoipa_swagger_ui::SwaggerUi;
 
 use super::{backtests, candles, orders};
 
@@ -83,6 +85,38 @@ impl Modify for SecurityAddon {
     }
 }
 
+/// Builds the OpenAPI-serving routes, merged into the app by `bootstrap`.
+///
+/// `GET /api/openapi.json` is always served: the spec is the public shape of
+/// the API (no secrets), and the frontend codegen + external tools consume it.
+/// When `enable_swagger_ui` is `true`, the interactive Swagger UI is also
+/// mounted at `/swagger-ui` (convenient in dev, disabled in production via
+/// `VIZ_ENABLE_SWAGGER_UI=false`). Neither route sits behind the `X-API-Key`
+/// middleware (that wraps only `/api/v1/monitoring`).
+pub fn openapi_router(enable_swagger_ui: bool) -> Router {
+    if enable_swagger_ui {
+        // `SwaggerUi` serves both the UI and the spec at the given URL.
+        Router::new()
+            .merge(SwaggerUi::new("/swagger-ui").url("/api/openapi.json", ApiDoc::openapi()))
+    } else {
+        // UI disabled: still expose the machine-readable spec on its own route.
+        Router::new().route("/api/openapi.json", get(serve_openapi))
+    }
+}
+
+/// Handler returning the OpenAPI document as JSON.
+async fn serve_openapi() -> Json<utoipa::openapi::OpenApi> {
+    Json(ApiDoc::openapi())
+}
+
+/// Serialises the OpenAPI document as pretty JSON.
+///
+/// Used by the `dump_openapi` binary to feed the frontend TypeScript codegen
+/// without needing a running server.
+pub fn openapi_pretty_json() -> Result<String, serde_json::Error> {
+    ApiDoc::openapi().to_pretty_json()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,5 +136,40 @@ mod tests {
         assert!(json.contains("OrderDto"));
         assert!(json.contains("BacktestRunDetailDto"));
         assert!(json.contains("x_api_key"));
+    }
+
+    #[test]
+    fn pretty_json_is_valid_and_contains_paths() {
+        let json = openapi_pretty_json().expect("spec must serialise");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("pretty JSON must parse");
+        assert_eq!(
+            parsed["openapi"].as_str().unwrap().chars().next(),
+            Some('3')
+        );
+        assert!(parsed["paths"]["/api/v1/monitoring/backtests"].is_object());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn openapi_json_route_served_when_ui_disabled() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+
+        let app = openapi_router(false);
+        let resp = app
+            .oneshot(
+                Request::get("/api/openapi.json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(parsed["paths"]["/api/v1/monitoring/candles"].is_object());
     }
 }

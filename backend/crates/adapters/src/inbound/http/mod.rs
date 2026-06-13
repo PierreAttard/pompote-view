@@ -9,6 +9,6 @@ pub mod orders;
 pub mod router;
 pub mod state;
 
-pub use openapi::ApiDoc;
+pub use openapi::{ApiDoc, openapi_pretty_json, openapi_router};
 pub use router::build_router;
 pub use state::AppState;

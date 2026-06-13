@@ -7,3 +7,7 @@ bun.lockb
 
 # Miscellaneous
 /static/
+
+# Generated from the backend OpenAPI spec (committed, not hand-edited)
+/openapi.json
+/src/lib/api/types.gen.ts

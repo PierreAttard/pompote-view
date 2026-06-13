@@ -63,6 +63,15 @@ jobs:
       - name: cargo test (locked)
         run: cargo test --workspace --locked
 
+      # The committed `frontend/openapi.json` is the contract the TypeScript
+      # client is generated from. Regenerate it from the `utoipa` annotations
+      # and fail if it drifted (someone changed a handler/DTO without running
+      # `cargo run -p viz_api --bin dump_openapi > ../frontend/openapi.json`).
+      - name: Verify committed OpenAPI spec is up to date
+        run: |
+          cargo run --locked --bin dump_openapi > /tmp/openapi.json
+          diff -u ../frontend/openapi.json /tmp/openapi.json
+
   frontend:
     name: frontend (sveltekit)
     runs-on: ubuntu-latest
@@ -91,6 +100,13 @@ jobs:
       # before running the test suite.
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
+
+      # Regenerate the typed client from the committed `openapi.json` and fail
+      # if it differs from what is checked in (stale `types.gen.ts`).
+      - name: Verify generated API types are up to date
+        run: |
+          npm run codegen
+          git diff --exit-code src/lib/api/types.gen.ts
 
       - name: Lint (prettier + eslint)
         run: npm run lint

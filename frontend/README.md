@@ -40,3 +40,23 @@ npm run build
 You can preview the production build with `npm run preview`.
 
 > To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+
+## Client API typé (généré depuis l'OpenAPI)
+
+Les types TypeScript de l'API sont **générés** depuis la spec OpenAPI du backend
+(`openapi-typescript`), pas écrits à la main.
+
+- Spec committée : `frontend/openapi.json` (produite par le backend, cf.
+  `backend/README.md` → `dump_openapi`).
+- Types générés committés : `src/lib/api/types.gen.ts` (ne pas éditer ; exclus
+  de prettier/eslint).
+- Régénérer les types après mise à jour de `openapi.json` :
+
+  ```sh
+  npm run codegen
+  ```
+
+La CI échoue si `types.gen.ts` n'est pas à jour vis-à-vis de `openapi.json`
+(et le job backend échoue si `openapi.json` ne correspond plus aux annotations
+`utoipa`). Le client `fetch` typé qui consomme ces types arrive avec l'issue
+#16 (Lot 3).

@@ -13,6 +13,7 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run && npm run test:e2e",
 		"test:e2e": "playwright install && playwright test",
+		"codegen": "openapi-typescript ./openapi.json -o ./src/lib/api/types.gen.ts",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write ."
 	},

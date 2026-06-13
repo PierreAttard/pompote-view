@@ -27,12 +27,32 @@ use cases de `application`.
 | `VIZ_API_KEY`       | oui     | —                | Valeur attendue du header `X-API-Key`. Minimum 16 octets (refus au boot).   |
 | `VIZ_API_BIND_ADDR` | non     | `0.0.0.0:3100`   | Adresse d'écoute du serveur axum.                                           |
 | `VIZ_DB_STATEMENT_TIMEOUT_MS` | non | `5000`     | `statement_timeout` par connexion (ms), garde-fou anti-contention sur le primaire Timescale. Une valeur non entière est refusée au boot. |
+| `VIZ_ENABLE_SWAGGER_UI` | non | `true`        | Monte Swagger UI sur `/swagger-ui`. Mettre `false` en production. `/api/openapi.json` reste servi quel que soit ce réglage. |
 | `RUST_LOG`          | non     | `info`           | Filtre `tracing-subscriber` (ex. `info,sqlx=warn`).                         |
 
 > ⚠️ Aucune valeur par défaut n'est fournie pour `DATABASE_URL` ni pour
 > `VIZ_API_KEY` : le serveur refuse de démarrer si elles sont absentes ou
 > vides. Aucun fichier `.env.example` n'est commité afin d'éviter qu'une
 > valeur d'exemple ne soit prise pour une valeur de prod.
+
+## OpenAPI / Swagger UI
+
+Le backend dérive sa spec OpenAPI des annotations `utoipa` posées sur chaque
+handler.
+
+- **Swagger UI** (dev) : `http://localhost:3100/swagger-ui` (désactivable avec
+  `VIZ_ENABLE_SWAGGER_UI=false`).
+- **Spec brute** : `GET /api/openapi.json` (toujours servie, hors middleware
+  `api_key` — la spec ne contient aucun secret).
+- **Génération hors-serveur** (pour le codegen frontend et le check CI) :
+
+  ```bash
+  cargo run -p viz_api --bin dump_openapi > ../frontend/openapi.json
+  ```
+
+  Après toute modification d'un handler ou d'un DTO, régénérer ce fichier puis
+  le client TypeScript (`cd ../frontend && npm run codegen`) et committer les
+  deux. La CI échoue si `frontend/openapi.json` ou `types.gen.ts` sont périmés.
 
 ## Lancer localement
 
