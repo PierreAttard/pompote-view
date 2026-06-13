@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import type { Snippet } from 'svelte';
 
 	// Extracted top-level shell so it can be tested in isolation with vitest-browser-svelte.
@@ -22,12 +23,16 @@
 		<h1 class="text-lg font-semibold tracking-tight text-slate-100">Pompote View</h1>
 		<p class="mt-1 text-xs text-slate-400">Visualisation & monitoring des stratégies de trading</p>
 
-		<div
-			class="mt-6 rounded-md border border-dashed border-slate-700 bg-slate-800/40 p-4 text-sm text-slate-400"
-			data-testid="selectors-placeholder"
-		>
-			Sélecteurs (à venir)
-		</div>
+		<ul class="mt-6 space-y-1 text-sm" data-testid="sidebar-nav">
+			<li>
+				<a
+					href={resolve('/backtests')}
+					class="block rounded-md px-3 py-2 text-slate-200 hover:bg-slate-800"
+				>
+					Backtests
+				</a>
+			</li>
+		</ul>
 	</nav>
 
 	<main
