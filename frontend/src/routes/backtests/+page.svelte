@@ -23,6 +23,7 @@
 			Statut
 			<select
 				name="status"
+				aria-label="Filtrer par statut"
 				class="mt-1 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100"
 			>
 				<option value="" selected={!data.filters.status}>Tous</option>
@@ -36,6 +37,7 @@
 			Symbole
 			<input
 				name="symbol"
+				aria-label="Filtrer par symbole"
 				value={data.filters.symbol ?? ''}
 				placeholder="BTCUSDT"
 				class="mt-1 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100"
@@ -45,6 +47,7 @@
 			Exchange
 			<input
 				name="exchange"
+				aria-label="Filtrer par exchange"
 				value={data.filters.exchange ?? ''}
 				placeholder="binance"
 				class="mt-1 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100"
