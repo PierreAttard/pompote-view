@@ -32,6 +32,9 @@ sqlx = { version = "0.8", default-features = false, features = [
     "migrate",
     "rust_decimal",
     "uuid",
+    # `json` maps Postgres `JSONB` <-> `serde_json::Value`, used by the backtest
+    # repository to carry opaque `config_snapshot` / decision `snapshot` blobs.
+    "json",
 ] }
 
 # Fixed-precision decimals for prices/volumes coming from Postgres `NUMERIC`.

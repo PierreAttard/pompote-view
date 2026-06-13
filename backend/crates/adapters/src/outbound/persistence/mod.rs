@@ -13,10 +13,12 @@
 //! - [`orders::SqlxOrderRepository`]    — bounded `SELECT` on the `orders`
 //!   table filtered by `strategy_id` and `created_at` (issue #10)
 
+pub mod backtests;
 pub mod candles;
 pub mod health;
 pub mod orders;
 
+pub use backtests::SqlxBacktestRepository;
 pub use candles::SqlxCandleRepository;
 pub use health::SqlxHealthChecker;
 pub use orders::SqlxOrderRepository;
