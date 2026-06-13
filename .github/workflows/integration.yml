@@ -1,0 +1,79 @@
+# Backend integration tests (issue #12).
+#
+# Spins a disposable TimescaleDB (via testcontainers), applies the real
+# robot_rust migrations, seeds fixtures and exercises every endpoint over HTTP.
+# This is the schema-drift detector between robot_rust and the viz backend.
+#
+# The schema lives in the PRIVATE `robot_rust` repo, so this workflow needs a
+# read-only token to check it out. Until the `ROBOT_RUST_TOKEN` secret is added
+# (a PAT or fine-grained token with read access to PierreAttard/robot_rust),
+# the job self-skips (stays green) instead of failing for everyone.
+
+name: integration
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-integration:
+    name: backend integration (timescaledb)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Secrets cannot be read in a job-level `if`, so we gate the real work on
+      # the presence of the robot_rust token discovered in this step.
+      - name: Detect robot_rust access
+        id: gate
+        env:
+          ROBOT_RUST_TOKEN: ${{ secrets.ROBOT_RUST_TOKEN }}
+        run: |
+          if [ -n "$ROBOT_RUST_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ROBOT_RUST_TOKEN secret not set — skipping integration tests."
+          fi
+
+      # Read-only shallow, sparse checkout of just the migrations directory.
+      - name: Checkout robot_rust migrations
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: PierreAttard/robot_rust
+          token: ${{ secrets.ROBOT_RUST_TOKEN }}
+          path: robot_rust
+          sparse-checkout: crates/robot_rust/migrations
+          sparse-checkout-cone-mode: false
+
+      - name: Install Rust toolchain (stable)
+        if: steps.gate.outputs.enabled == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and target
+        if: steps.gate.outputs.enabled == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
+      # `SQLX_OFFLINE=true` so the build uses the committed `.sqlx` cache; the
+      # queries then run for real against the disposable Timescale container
+      # spun up by testcontainers (Docker is available on ubuntu runners).
+      - name: Run integration tests
+        if: steps.gate.outputs.enabled == 'true'
+        working-directory: backend
+        env:
+          SQLX_OFFLINE: "true"
+          ROBOT_RUST_MIGRATIONS_DIR: ${{ github.workspace }}/robot_rust/crates/robot_rust/migrations
+        run: cargo test -p viz_api --features integration --locked
