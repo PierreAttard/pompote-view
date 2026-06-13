@@ -54,6 +54,36 @@ handler.
   le client TypeScript (`cd ../frontend && npm run codegen`) et committer les
   deux. La CI échoue si `frontend/openapi.json` ou `types.gen.ts` sont périmés.
 
+## Tests d'intégration (Postgres jetable)
+
+Le harnais d'intégration (`crates/viz_api/tests/integration.rs`, derrière la
+feature `integration`) démarre une **TimescaleDB jetable** (via `testcontainers`,
+donc **Docker requis**), applique les **migrations réelles de `robot_rust`**,
+seed des fixtures, puis exerce tous les endpoints en HTTP. C'est aussi le
+**détecteur de drift de schéma** : une colonne renommée côté `robot_rust` fait
+échouer une requête ici.
+
+Le schéma n'est **jamais committé** dans ce repo : il est récupéré depuis un
+checkout (read-only) de `robot_rust`, pointé par `ROBOT_RUST_MIGRATIONS_DIR`.
+
+```bash
+# 1. récupérer les migrations robot_rust (read-only) — exemple :
+git clone --depth=1 --filter=blob:none --sparse git@github.com:PierreAttard/robot_rust.git /tmp/rr
+( cd /tmp/rr && git sparse-checkout set crates/robot_rust/migrations )
+
+# 2. lancer le harnais (Docker doit tourner)
+ROBOT_RUST_MIGRATIONS_DIR=/tmp/rr/crates/robot_rust/migrations \
+  SQLX_OFFLINE=true cargo test -p viz_api --features integration
+```
+
+Ces tests ne tournent **pas** dans le pipeline `check` par défaut (build offline
+sans DB). Ils tournent dans le workflow `integration` (`.github/workflows/integration.yml`),
+qui **s'auto-désactive** tant que le secret `ROBOT_RUST_TOKEN` (accès lecture à
+`robot_rust`) n'est pas configuré dans les *Settings → Secrets* du repo.
+
+> ⚠️ Ajout du secret = action **humaine** : un agent ne provisionne pas de
+> secret GitHub ni n'accède en écriture à `robot_rust`.
+
 ## Lancer localement
 
 ```bash

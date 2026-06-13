@@ -33,3 +33,19 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
+
+# Integration test harness deps (compiled only with `--features integration`,
+# never in the default/offline build). See `tests/integration.rs`.
+testcontainers = { version = "0.24", optional = true }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+], optional = true }
+serde_json = { workspace = true, optional = true }
+
+[features]
+# Enables the DB-backed integration tests. Requires Docker (testcontainers)
+# and `ROBOT_RUST_MIGRATIONS_DIR` pointing at a checkout of the robot_rust
+# `crates/robot_rust/migrations` directory. Off by default so the standard
+# offline CI (`SQLX_OFFLINE=true cargo test --workspace`) never needs a DB.
+integration = ["dep:testcontainers", "dep:reqwest", "dep:serde_json"]
