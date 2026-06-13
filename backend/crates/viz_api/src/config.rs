@@ -47,6 +47,11 @@ pub struct AppConfig {
     pub bind_addr: String,
     /// Per-connection `statement_timeout` in milliseconds, applied via the
     /// pool's `after_connect` hook (see `main.rs`).
+    ///
+    /// A value of `0` follows Postgres semantics and **disables** the timeout
+    /// entirely. This is a deliberate operator escape hatch (e.g. local
+    /// debugging of a slow query); it is distinct from a malformed value,
+    /// which is rejected at boot (`ConfigError::InvalidInt`).
     pub db_statement_timeout_ms: u64,
 }
 
@@ -90,6 +95,8 @@ impl AppConfig {
     /// - `DATABASE_URL` (required, non-empty)
     /// - `VIZ_API_KEY`  (required, non-empty, >= [`MIN_API_KEY_LEN`] bytes)
     /// - `VIZ_API_BIND_ADDR` (optional, default `0.0.0.0:3100`)
+    /// - `VIZ_DB_STATEMENT_TIMEOUT_MS` (optional, default
+    ///   [`DEFAULT_DB_STATEMENT_TIMEOUT_MS`])
     pub fn from_env() -> Result<Self, ConfigError> {
         let database_url = required_env("DATABASE_URL")?;
         let api_key = required_env("VIZ_API_KEY")?;
@@ -192,7 +199,10 @@ mod tests {
 
     #[test]
     fn optional_u64_env_rejects_non_integer() {
-        // SAFETY: single-threaded test, variable scoped to this test only.
+        // SAFETY: `set_var`/`remove_var` mutate process-global state, but this
+        // test uses a unique variable name no other test reads, and calls
+        // `optional_u64_env` synchronously between set and remove — so the
+        // parallel test runner cannot observe an interleaved value.
         unsafe { env::set_var("VIZ_TEST_BAD_TIMEOUT_VAR", "not-a-number") };
         let err = optional_u64_env("VIZ_TEST_BAD_TIMEOUT_VAR", 5000).unwrap_err();
         unsafe { env::remove_var("VIZ_TEST_BAD_TIMEOUT_VAR") };
