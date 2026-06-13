@@ -1,0 +1,1396 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "pompote-view API",
+    "description": "Read-only HTTP surface for monitoring trading strategies. Every `/api/v1/*` route requires the `X-API-Key` header.",
+    "contact": {
+      "name": "Pierre Attard"
+    },
+    "license": {
+      "name": "Apache-2.0"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/monitoring/backtests": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Handler for `GET /api/v1/monitoring/backtests`.",
+        "operationId": "list_backtests",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Optional `status` filter (`running`/`completed`/`failed`/`aborted`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "strategy_kind",
+            "in": "query",
+            "description": "Optional `strategy_kind` filter.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "exchange",
+            "in": "query",
+            "description": "Optional `exchange` filter.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "description": "Optional `symbol` filter.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Row cap (defaults to and rejected above `MAX_BACKTEST_RUNS`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Backtest runs ordered by descending `started_at`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BacktestRunSummaryDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid `status` filter or `limit` out of bounds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` header."
+          },
+          "500": {
+            "description": "Unexpected internal error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Datastore temporarily unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "x_api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/backtests/{run_id}": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Handler for `GET /api/v1/monitoring/backtests/{run_id}`.",
+        "operationId": "get_backtest",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Backtest run identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run and its configuration snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestRunDetailDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` header."
+          },
+          "404": {
+            "description": "No run with that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected internal error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Datastore temporarily unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "x_api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/backtests/{run_id}/candles": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Handler for `GET /api/v1/monitoring/backtests/{run_id}/candles`.",
+        "operationId": "get_backtest_candles",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Backtest run identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "description": "Aggregation width (must be one of [`Timeframe::ALLOWED`]).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aggregated candles_5s over the run's market window, with a `source` hint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestCandlesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid timeframe or window exceeding the bucket cap.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` header."
+          },
+          "404": {
+            "description": "No run with that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected internal error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Datastore temporarily unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "x_api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/backtests/{run_id}/decisions": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Handler for `GET /api/v1/monitoring/backtests/{run_id}/decisions`.",
+        "operationId": "get_backtest_decisions",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Backtest run identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive lower bound on `market_ts` (RFC3339).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive upper bound on `market_ts` (RFC3339). Defaults to `Clock::now()`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Row cap (defaults to and rejected above `MAX_ORDER_ROWS`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run decisions on the window, ordered by ascending `market_ts`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DecisionDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid range or limit out of bounds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` header."
+          },
+          "500": {
+            "description": "Unexpected internal error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Datastore temporarily unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "x_api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/backtests/{run_id}/fills": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Handler for `GET /api/v1/monitoring/backtests/{run_id}/fills`.",
+        "operationId": "get_backtest_fills",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Backtest run identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive lower bound on `market_ts` (RFC3339).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive upper bound on `market_ts` (RFC3339). Defaults to `Clock::now()`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Row cap (defaults to and rejected above `MAX_ORDER_ROWS`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run fills on the window, ordered by ascending `market_ts`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FillDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid range or limit out of bounds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` header."
+          },
+          "500": {
+            "description": "Unexpected internal error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Datastore temporarily unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "x_api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/backtests/{run_id}/orders": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Handler for `GET /api/v1/monitoring/backtests/{run_id}/orders`.",
+        "operationId": "get_backtest_orders",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Backtest run identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive lower bound on `market_ts` (RFC3339).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive upper bound on `market_ts` (RFC3339). Defaults to `Clock::now()`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Row cap (defaults to and rejected above `MAX_ORDER_ROWS`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run orders on the window, ordered by ascending `market_ts`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BacktestOrderDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid range or limit out of bounds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` header."
+          },
+          "500": {
+            "description": "Unexpected internal error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Datastore temporarily unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "x_api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/candles": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Handler for `GET /api/v1/monitoring/candles`.",
+        "operationId": "get_candles",
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "description": "Exchange identifier as stored in `candles_5s.exchange`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "description": "Symbol identifier as stored in `candles_5s.symbol`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "description": "Aggregation width (must be one of [`Timeframe::ALLOWED`]).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive lower bound on `open_time` (RFC3339).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive upper bound on `open_time` (RFC3339). Defaults to `Clock::now()`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aggregated OHLCV buckets ordered by ascending `ts`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CandleDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid timeframe, range or too many points.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandleErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` header."
+          },
+          "500": {
+            "description": "Unexpected internal error (e.g. schema drift).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandleErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Datastore temporarily unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandleErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "x_api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/strategies/{id}/orders": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Handler for `GET /api/v1/monitoring/strategies/{id}/orders`.",
+        "operationId": "get_orders",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Strategy identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive lower bound on `created_at` (RFC3339).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive upper bound on `created_at` (RFC3339). Defaults to `Clock::now()`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Row cap (defaults to [`MAX_ORDER_ROWS`], rejected above [`MAX_ORDER_ROWS`]).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Orders for the strategy on the requested window, ordered by ascending `created_at`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid range, limit out of bounds, or non-UUID path parameter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` header."
+          },
+          "500": {
+            "description": "Unexpected internal error (e.g. schema drift).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Datastore temporarily unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "x_api_key": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BacktestCandlesDto": {
+        "type": "object",
+        "description": "Response for the run candles endpoint: the OHLC series plus a source hint.",
+        "required": [
+          "source",
+          "candles"
+        ],
+        "properties": {
+          "candles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandleDto"
+            },
+            "description": "Aggregated OHLC buckets (empty when `source = none`)."
+          },
+          "source": {
+            "type": "string",
+            "description": "`candles_5s` when the run window is covered, `none` for the degraded\ntimeline-only view (no OHLC background available).",
+            "example": "candles_5s"
+          }
+        }
+      },
+      "BacktestErrorBody": {
+        "type": "object",
+        "description": "JSON error body for the backtest endpoints.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "allowed": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Whitelisted values for `invalid_status`."
+          },
+          "error": {
+            "type": "string",
+            "description": "Machine-readable discriminator (e.g. `invalid_range`)."
+          },
+          "max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Applicable row cap for `too_many_rows`.",
+            "minimum": 0
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable explanation."
+          },
+          "requested": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Echoes the requested row count for `too_many_rows`.",
+            "minimum": 0
+          }
+        }
+      },
+      "BacktestOrderDto": {
+        "type": "object",
+        "description": "One backtest order (chart marker).",
+        "required": [
+          "order_id",
+          "decision_id",
+          "side",
+          "quantity",
+          "status",
+          "market_ts"
+        ],
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Foreign key to the decision."
+          },
+          "market_ts": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Market-clock timestamp (RFC3339)."
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Primary key."
+          },
+          "price": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Best-effort price `COALESCE(limit_price, expected_price)`; `null` when unknown."
+          },
+          "quantity": {
+            "type": "number",
+            "format": "double",
+            "description": "Base-asset quantity."
+          },
+          "side": {
+            "type": "string",
+            "description": "`buy` or `sell`.",
+            "example": "buy"
+          },
+          "status": {
+            "type": "string",
+            "description": "Raw status string (free text — `orders_backtest.status` has no `CHECK`).",
+            "example": "filled"
+          }
+        }
+      },
+      "BacktestRunDetailDto": {
+        "type": "object",
+        "description": "A run with its opaque configuration snapshot (detail view).",
+        "required": [
+          "run",
+          "config_snapshot"
+        ],
+        "properties": {
+          "config_snapshot": {
+            "type": "object",
+            "description": "Opaque, display-only configuration snapshot (`jsonb` object)."
+          },
+          "run": {
+            "$ref": "#/components/schemas/BacktestRunSummaryDto",
+            "description": "The run summary."
+          }
+        }
+      },
+      "BacktestRunSummaryDto": {
+        "type": "object",
+        "description": "Summary of a backtest run (list item).",
+        "required": [
+          "id",
+          "strategy_kind",
+          "exchange",
+          "symbol",
+          "data_range_start",
+          "data_range_end",
+          "started_at",
+          "status",
+          "slippage_bps",
+          "latency_ms",
+          "fee_kraken_bps",
+          "fee_binance_bps"
+        ],
+        "properties": {
+          "data_range_end": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exclusive end of the replayed market window (RFC3339, market clock)."
+          },
+          "data_range_start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive start of the replayed market window (RFC3339, market clock)."
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Wall-clock time the run ended; absent while `status = running`."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Failure description when `status = failed`; absent otherwise."
+          },
+          "exchange": {
+            "type": "string",
+            "description": "Exchange identifier.",
+            "example": "binance"
+          },
+          "fee_binance_bps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Simulated Binance taker fee in basis points."
+          },
+          "fee_kraken_bps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Simulated Kraken taker fee in basis points."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Primary key."
+          },
+          "latency_ms": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Simulated execution latency in milliseconds."
+          },
+          "slippage_bps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Simulated slippage in basis points."
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Wall-clock time the run started (RFC3339)."
+          },
+          "status": {
+            "type": "string",
+            "description": "Lifecycle state (`running`, `completed`, `failed`, `aborted`).",
+            "example": "completed"
+          },
+          "strategy_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Optional synthetic strategy id (nullable, no FK)."
+          },
+          "strategy_kind": {
+            "type": "string",
+            "description": "Strategy family label.",
+            "example": "ma_cross"
+          },
+          "symbol": {
+            "type": "string",
+            "description": "Symbol identifier.",
+            "example": "BTCUSDT"
+          }
+        }
+      },
+      "CandleDto": {
+        "type": "object",
+        "description": "HTTP DTO returned in the JSON array.\n\nWe deliberately down-cast `Decimal` → `f64` at the serialisation boundary:\nLightweight Charts requires JS numbers, and the relative error introduced\n(worst case ≈ 2.2e-16 for typical OHLC magnitudes) is invisible at chart\npixel resolution. The full-precision `Decimal` stays in the domain and the\npersistence layer — only this struct loses precision, and it is the only\nplace that does.",
+        "required": [
+          "ts",
+          "o",
+          "h",
+          "l",
+          "c",
+          "v"
+        ],
+        "properties": {
+          "c": {
+            "type": "number",
+            "format": "double",
+            "description": "Close price."
+          },
+          "h": {
+            "type": "number",
+            "format": "double",
+            "description": "High price."
+          },
+          "l": {
+            "type": "number",
+            "format": "double",
+            "description": "Low price."
+          },
+          "o": {
+            "type": "number",
+            "format": "double",
+            "description": "Open price."
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Bucket start, RFC3339 (e.g. `2026-05-27T14:00:00Z`)."
+          },
+          "v": {
+            "type": "number",
+            "format": "double",
+            "description": "Total traded volume in the bucket."
+          }
+        }
+      },
+      "CandleErrorBody": {
+        "type": "object",
+        "description": "JSON error body returned on 4xx / 5xx by the candles endpoint.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "allowed": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Whitelisted `timeframe` values, surfaced for `invalid_timeframe`."
+          },
+          "error": {
+            "type": "string",
+            "description": "Machine-readable error discriminator (e.g. `invalid_timeframe`)."
+          },
+          "max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum bucket count accepted by the endpoint for `too_many_points`.",
+            "minimum": 0
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable explanation (optional)."
+          },
+          "requested": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Echoes the caller-supplied bucket count for `too_many_points`.",
+            "minimum": 0
+          }
+        }
+      },
+      "DecisionDto": {
+        "type": "object",
+        "description": "One strategy decision (marker + optional context snapshot).",
+        "required": [
+          "decision_id",
+          "market_ts",
+          "reason",
+          "orders_count"
+        ],
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Primary key."
+          },
+          "market_ts": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Market-clock timestamp (RFC3339)."
+          },
+          "orders_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of orders emitted by this decision."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Free-text rationale recorded by the strategy engine."
+          },
+          "snapshot": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Opaque market-context snapshot (`jsonb`); absent when no context recorded."
+          }
+        }
+      },
+      "FillDto": {
+        "type": "object",
+        "description": "One trade fill.",
+        "required": [
+          "fill_id",
+          "order_id",
+          "side",
+          "price",
+          "quantity",
+          "fee",
+          "fee_asset",
+          "market_ts"
+        ],
+        "properties": {
+          "fee": {
+            "type": "number",
+            "format": "double",
+            "description": "Fee charged for this fill."
+          },
+          "fee_asset": {
+            "type": "string",
+            "description": "Asset the fee was charged in.",
+            "example": "USDT"
+          },
+          "fill_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Primary key."
+          },
+          "market_ts": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Market-clock timestamp (RFC3339)."
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Order that produced this fill."
+          },
+          "price": {
+            "type": "number",
+            "format": "double",
+            "description": "Execution price."
+          },
+          "quantity": {
+            "type": "number",
+            "format": "double",
+            "description": "Executed base-asset quantity."
+          },
+          "side": {
+            "type": "string",
+            "description": "`buy` or `sell`.",
+            "example": "sell"
+          }
+        }
+      },
+      "OrderDto": {
+        "type": "object",
+        "description": "HTTP DTO returned in the JSON array for the orders endpoint.\n\n`Decimal -> f64` happens at this boundary only (see candles handler\nrationale). For OHLC magnitudes the worst-case relative error\n(~2.2e-16) is invisible at chart pixel resolution; the full-precision\n`Decimal` stays in the domain and persistence layers.",
+        "required": [
+          "order_id",
+          "decision_id",
+          "side",
+          "quantity",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Wall-clock time the row was inserted (RFC3339)."
+          },
+          "decision_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Foreign key to `strategy_decisions(id)`."
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Primary key."
+          },
+          "price": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Best-effort price: `COALESCE(limit_price, expected_price)`.\n\n- For `limit` / `amend` orders, this is the explicit limit price.\n- For `market` orders, this is the `expected_price` recorded by the\n  strategy engine just before submission, when available.\n- `null` when neither is known (e.g. `market` without expected price)."
+          },
+          "quantity": {
+            "type": "number",
+            "format": "double",
+            "description": "Base-asset quantity."
+          },
+          "side": {
+            "type": "string",
+            "description": "`buy` or `sell` (DB enum).",
+            "example": "buy"
+          },
+          "status": {
+            "type": "string",
+            "description": "Lifecycle status (`submitted`, `filled`, `canceled`, …).",
+            "example": "filled"
+          }
+        }
+      },
+      "OrderErrorBody": {
+        "type": "object",
+        "description": "JSON error body returned on 4xx / 5xx by the orders endpoint.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "allowed": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Whitelisted `side` values, surfaced for `invalid_side` (currently\nunused — the handler does not parse `side` from input, but kept for\nschema symmetry with the candles error body)."
+          },
+          "error": {
+            "type": "string",
+            "description": "Machine-readable error discriminator (e.g. `invalid_range`)."
+          },
+          "max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum row count accepted by the endpoint for `too_many_rows`.",
+            "minimum": 0
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable explanation (optional)."
+          },
+          "requested": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Echoes the caller-supplied row count for `too_many_rows`.",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "x_api_key": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "monitoring",
+      "description": "Read-only monitoring endpoints (candles, orders, …)."
+    }
+  ]
+}

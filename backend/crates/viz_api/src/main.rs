@@ -11,7 +11,7 @@ mod config;
 
 use std::sync::Arc;
 
-use adapters::inbound::http::{AppState, build_router};
+use adapters::inbound::http::{AppState, build_router, openapi_router};
 use adapters::outbound::clock::SystemClock;
 use adapters::outbound::persistence::{
     SqlxBacktestRepository, SqlxCandleRepository, SqlxHealthChecker, SqlxOrderRepository,
@@ -106,7 +106,11 @@ async fn main() -> anyhow::Result<()> {
         get_backtest_candles,
     };
 
-    let app = build_router(state);
+    let app = build_router(state).merge(openapi_router(cfg.enable_swagger_ui));
+    info!(
+        swagger_ui = cfg.enable_swagger_ui,
+        "openapi spec served at /api/openapi.json"
+    );
 
     let listener = TcpListener::bind(&cfg.bind_addr).await?;
     info!(addr = %cfg.bind_addr, "viz_api listening");

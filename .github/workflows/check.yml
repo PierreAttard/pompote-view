@@ -63,6 +63,15 @@ jobs:
       - name: cargo test (locked)
         run: cargo test --workspace --locked
 
+      # The committed `frontend/openapi.json` is the contract the TypeScript
+      # client is generated from. Regenerate it from the `utoipa` annotations
+      # and fail if it drifted (someone changed a handler/DTO without running
+      # `cargo run -p viz_api --bin dump_openapi > ../frontend/openapi.json`).
+      - name: Verify committed OpenAPI spec is up to date
+        run: |
+          cargo run --locked -p viz_api --bin dump_openapi > /tmp/openapi.json
+          diff -u ../frontend/openapi.json /tmp/openapi.json
+
   frontend:
     name: frontend (sveltekit)
     runs-on: ubuntu-latest
@@ -85,6 +94,14 @@ jobs:
       # PR #38). Revisit when openapi-typescript ships TS 6 support.
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
+
+      # Regenerate the typed client from the committed `openapi.json` and fail
+      # if it differs from what is checked in (stale `types.gen.ts`). Placed
+      # before the slow Playwright install so a contract drift fails fast.
+      - name: Verify generated API types are up to date
+        run: |
+          npm run codegen
+          git diff --exit-code src/lib/api/types.gen.ts
 
       # Vitest 4 runs unit tests via @vitest/browser-playwright with a Chromium
       # provider (see frontend/vite.config.ts). Install the browser + OS deps

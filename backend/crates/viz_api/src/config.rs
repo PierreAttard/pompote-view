@@ -31,6 +31,13 @@ pub const MIN_API_KEY_LEN: usize = 16;
 /// (<= 5000 rows/points) query yet well below a human's patience threshold.
 pub const DEFAULT_DB_STATEMENT_TIMEOUT_MS: u64 = 5000;
 
+/// Default for `VIZ_ENABLE_SWAGGER_UI`.
+///
+/// Swagger UI is enabled by default (convenient in dev). Operators disable it
+/// in production by setting `VIZ_ENABLE_SWAGGER_UI=false`. The machine-readable
+/// `/api/openapi.json` spec is served regardless of this flag.
+pub const DEFAULT_ENABLE_SWAGGER_UI: bool = true;
+
 /// Parsed configuration for the viz API.
 ///
 /// `Debug` is implemented manually to redact sensitive fields (`database_url`
@@ -53,6 +60,8 @@ pub struct AppConfig {
     /// debugging of a slow query); it is distinct from a malformed value,
     /// which is rejected at boot (`ConfigError::InvalidInt`).
     pub db_statement_timeout_ms: u64,
+    /// Whether to mount Swagger UI at `/swagger-ui` (disable in production).
+    pub enable_swagger_ui: bool,
 }
 
 impl std::fmt::Debug for AppConfig {
@@ -62,6 +71,7 @@ impl std::fmt::Debug for AppConfig {
             .field("api_key", &"<redacted>")
             .field("bind_addr", &self.bind_addr)
             .field("db_statement_timeout_ms", &self.db_statement_timeout_ms)
+            .field("enable_swagger_ui", &self.enable_swagger_ui)
             .finish()
     }
 }
@@ -87,6 +97,10 @@ pub enum ConfigError {
     /// An integer-typed env variable was provided but could not be parsed.
     #[error("environment variable `{var}` is not a valid integer: `{value}`")]
     InvalidInt { var: &'static str, value: String },
+
+    /// A boolean-typed env variable was provided but could not be parsed.
+    #[error("environment variable `{var}` is not a valid boolean: `{value}`")]
+    InvalidBool { var: &'static str, value: String },
 }
 
 impl AppConfig {
@@ -116,11 +130,15 @@ impl AppConfig {
             DEFAULT_DB_STATEMENT_TIMEOUT_MS,
         )?;
 
+        let enable_swagger_ui =
+            optional_bool_env("VIZ_ENABLE_SWAGGER_UI", DEFAULT_ENABLE_SWAGGER_UI)?;
+
         Ok(Self {
             database_url,
             api_key,
             bind_addr,
             db_statement_timeout_ms,
+            enable_swagger_ui,
         })
     }
 }
@@ -139,6 +157,24 @@ fn optional_env(name: &'static str) -> Result<Option<String>, ConfigError> {
         Ok(v) => Ok(Some(v)),
         Err(VarError::NotPresent) => Ok(None),
         Err(VarError::NotUnicode(_)) => Err(ConfigError::NotUnicode { var: name }),
+    }
+}
+
+/// Reads an optional boolean env variable (`true`/`false`/`1`/`0`,
+/// case-insensitive), falling back to `default` when absent or empty. A
+/// present-but-unrecognised value is a hard error (`InvalidBool`), so a typo
+/// never silently flips the flag.
+fn optional_bool_env(name: &'static str, default: bool) -> Result<bool, ConfigError> {
+    match optional_env(name)?.filter(|v| !v.is_empty()) {
+        None => Ok(default),
+        Some(v) => match v.to_ascii_lowercase().as_str() {
+            "true" | "1" | "yes" | "on" => Ok(true),
+            "false" | "0" | "no" | "off" => Ok(false),
+            _ => Err(ConfigError::InvalidBool {
+                var: name,
+                value: v,
+            }),
+        },
     }
 }
 
@@ -167,6 +203,7 @@ mod tests {
             api_key: "verysecretapikey1234567890".to_string(),
             bind_addr: "127.0.0.1:3100".to_string(),
             db_statement_timeout_ms: DEFAULT_DB_STATEMENT_TIMEOUT_MS,
+            enable_swagger_ui: DEFAULT_ENABLE_SWAGGER_UI,
         };
 
         let dbg = format!("{:?}", cfg);
@@ -195,6 +232,27 @@ mod tests {
         // test environment so the absent branch is exercised deterministically.
         let got = optional_u64_env("VIZ_TEST_ABSENT_TIMEOUT_VAR_XYZ", 5000).unwrap();
         assert_eq!(got, 5000);
+    }
+
+    #[test]
+    fn optional_bool_env_parses_and_defaults() {
+        // Absent and empty both fall back to the default.
+        assert!(optional_bool_env("VIZ_TEST_ABSENT_BOOL_XYZ", true).unwrap());
+        // SAFETY: unique variable name no other test reads; set/read/remove
+        // happen synchronously here, so the parallel runner cannot interleave.
+        unsafe { env::set_var("VIZ_TEST_BOOL_VAR", "") };
+        let empty_defaults = optional_bool_env("VIZ_TEST_BOOL_VAR", true).unwrap();
+        unsafe { env::set_var("VIZ_TEST_BOOL_VAR", "FALSE") };
+        let falsey = optional_bool_env("VIZ_TEST_BOOL_VAR", true).unwrap();
+        unsafe { env::set_var("VIZ_TEST_BOOL_VAR", "on") };
+        let truthy = optional_bool_env("VIZ_TEST_BOOL_VAR", false).unwrap();
+        unsafe { env::set_var("VIZ_TEST_BOOL_VAR", "nope") };
+        let err = optional_bool_env("VIZ_TEST_BOOL_VAR", true).unwrap_err();
+        unsafe { env::remove_var("VIZ_TEST_BOOL_VAR") };
+        assert!(empty_defaults, "empty value must use the default");
+        assert!(!falsey, "`FALSE` must parse to false");
+        assert!(truthy, "`on` must parse to true");
+        assert!(matches!(err, ConfigError::InvalidBool { .. }));
     }
 
     #[test]
