@@ -25,6 +25,24 @@ describe('FreshnessIndicator.svelte', () => {
 		await expect.element(el).toHaveAttribute('aria-label', expect.stringContaining('Erreur'));
 	});
 
+	it('honours a custom stale threshold', async () => {
+		render(FreshnessIndicator, { updatedAt: Date.now() - 10_000, staleAfterMs: 5_000 });
+		await expect
+			.element(page.getByTestId('freshness-indicator'))
+			.toHaveAttribute('data-state', 'stale');
+	});
+
+	it('pulses the dot while a poll is in flight', async () => {
+		render(FreshnessIndicator, { updatedAt: Date.now(), fetching: true });
+		await expect.element(page.getByTestId('freshness-indicator')).toBeInTheDocument();
+		await expect
+			.poll(
+				() =>
+					page.getByTestId('freshness-indicator').element().querySelector('.animate-pulse') !== null
+			)
+			.toBe(true);
+	});
+
 	it('renders nothing before the first successful update', async () => {
 		render(FreshnessIndicator, { updatedAt: 0 });
 		await expect.element(page.getByTestId('freshness-indicator')).not.toBeInTheDocument();
