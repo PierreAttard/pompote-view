@@ -14,6 +14,8 @@ export const GET: RequestHandler = async ({ fetch }) => {
 	try {
 		return json(await listStrategies(fetch, backendConfig()));
 	} catch (e) {
+		// Server-side log for debugging; nothing sensitive reaches the browser.
+		console.error('[/api/strategies] backend call failed', e);
 		throw error(e instanceof BackendError ? e.status : 502, 'Impossible de charger les stratégies');
 	}
 };
