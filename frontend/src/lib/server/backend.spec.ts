@@ -4,6 +4,7 @@ import {
 	getBacktestRun,
 	getBacktestRunCandles,
 	getCandles,
+	getStrategyOrders,
 	listBacktestRuns,
 	type BackendConfig
 } from './backend';
@@ -119,6 +120,40 @@ describe('getCandles', () => {
 		}).catch((e) => e);
 		expect(err).toBeInstanceOf(BackendError);
 		expect(err.status).toBe(400);
+	});
+});
+
+describe('getStrategyOrders', () => {
+	it('forwards the strategy id (encoded) + window and parses the body', async () => {
+		const fetch = vi
+			.fn()
+			.mockResolvedValue(jsonResponse([{ order_id: 'o1', side: 'buy', decision_id: 'd1' }]));
+
+		const orders = await getStrategyOrders(
+			fetch as unknown as typeof globalThis.fetch,
+			config,
+			'abc def',
+			'2026-06-01T00:00:00Z',
+			'2026-06-02T00:00:00Z'
+		);
+
+		expect(orders).toHaveLength(1);
+		const [url, init] = fetch.mock.calls[0];
+		expect((url as URL).pathname).toBe('/api/v1/monitoring/strategies/abc%20def/orders');
+		expect((url as URL).searchParams.get('from')).toBe('2026-06-01T00:00:00Z');
+		expect((url as URL).searchParams.get('to')).toBe('2026-06-02T00:00:00Z');
+		expect((init as RequestInit).headers).toEqual({ 'X-API-Key': 'test-key' });
+	});
+
+	it('omits `to` when not provided', async () => {
+		const fetch = vi.fn().mockResolvedValue(jsonResponse([]));
+		await getStrategyOrders(
+			fetch as unknown as typeof globalThis.fetch,
+			config,
+			's1',
+			'2026-06-01T00:00:00Z'
+		);
+		expect((fetch.mock.calls[0][0] as URL).searchParams.has('to')).toBe(false);
 	});
 });
 

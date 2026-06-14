@@ -9,6 +9,7 @@
 		type IChartApi,
 		type ISeriesApi,
 		type ISeriesMarkersPluginApi,
+		type MouseEventParams,
 		type Time
 	} from 'lightweight-charts';
 	import type { Candle } from '$lib/api/types';
@@ -29,9 +30,22 @@
 		overlays?: ChartOverlay[];
 		/** Override the system colour-scheme preference (mostly for tests). */
 		dark?: boolean;
+		/**
+		 * Crosshair hover callback. Fires with the bar `time` under the cursor and
+		 * its pixel position, or `null` when the cursor leaves the data area. The
+		 * live view uses this to show a decision tooltip (#21).
+		 */
+		onHover?: (info: HoverInfo | null) => void;
 	}
 
-	let { candles = [], markers = [], overlays = [], dark }: Props = $props();
+	/** Bar time + pixel position reported on crosshair move. */
+	export interface HoverInfo {
+		time: Time;
+		x: number;
+		y: number;
+	}
+
+	let { candles = [], markers = [], overlays = [], dark, onHover }: Props = $props();
 
 	let container: HTMLDivElement;
 	let chart: IChartApi | undefined;
@@ -130,6 +144,16 @@
 		render(candles);
 		renderMarkers(markers);
 		renderOverlays(overlays);
+
+		// Report crosshair hover so the live view can show a decision tooltip.
+		// `point`/`time` are undefined once the cursor leaves the data area.
+		chart.subscribeCrosshairMove((param: MouseEventParams<Time>) => {
+			if (!param.point || param.time === undefined) {
+				onHover?.(null);
+				return;
+			}
+			onHover?.({ time: param.time, x: param.point.x, y: param.point.y });
+		});
 
 		// Disposing the chart tears down its ResizeObserver and DOM nodes, so
 		// repeated mount/unmount cycles do not leak.

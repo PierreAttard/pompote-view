@@ -21,6 +21,7 @@ import type {
 	Decision,
 	LiveDecision,
 	LiveFill,
+	Order,
 	Strategy
 } from '$lib/api/types';
 
@@ -34,6 +35,7 @@ export type {
 	Decision,
 	LiveDecision,
 	LiveFill,
+	Order,
 	Strategy
 };
 
@@ -247,6 +249,26 @@ export async function getStrategyDecisions(
 	url.searchParams.set('from', from);
 	if (to) url.searchParams.set('to', to);
 	return backendGet<LiveDecision[]>(fetch, config, url);
+}
+
+/**
+ * Fetches a strategy's live orders (buy/sell, with their `decision_id`) on a
+ * `[from, to)` window over `created_at`. These back the live chart's decision
+ * markers; the `decision_id` joins each marker to its rationale + snapshot.
+ */
+export async function getStrategyOrders(
+	fetch: typeof globalThis.fetch,
+	config: BackendConfig,
+	strategyId: string,
+	from: string,
+	to?: string
+): Promise<Order[]> {
+	const url = new URL(
+		`${trimBase(config)}/api/v1/monitoring/strategies/${encodeURIComponent(strategyId)}/orders`
+	);
+	url.searchParams.set('from', from);
+	if (to) url.searchParams.set('to', to);
+	return backendGet<Order[]>(fetch, config, url);
 }
 
 function trimBase(config: BackendConfig): string {

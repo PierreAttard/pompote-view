@@ -1,31 +1,95 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
-	import Chart from '$lib/chart/Chart.svelte';
+	import type { LiveDecision } from '$lib/api/types';
+	import Chart, { type HoverInfo } from '$lib/chart/Chart.svelte';
+	import {
+		buildDecisionLookup,
+		decisionsQueryKey,
+		fetchDecisions,
+		fetchOrders,
+		ordersQueryKey,
+		ordersToMarkers,
+		type AnnotationParams
+	} from './annotations';
 	import { candlesQueryKey, fetchCandles, type CandlesParams } from './candles';
+	import DecisionTooltip from './DecisionTooltip.svelte';
+	import { timeframeSeconds } from './depth';
 
-	// The selectors (strategy/exchange/symbol/timeframe/range) flow in as props;
-	// the page derives the `[from, to)` window from the active preset.
-	let { exchange, symbol, timeframe, from, to }: CandlesParams = $props();
+	interface Props extends CandlesParams {
+		/** Strategy whose orders/decisions annotate the chart. */
+		strategyId: string;
+	}
+
+	// The selectors flow in as props; the page derives the `[from, to)` window.
+	let { strategyId, exchange, symbol, timeframe, from, to }: Props = $props();
 
 	const params = $derived<CandlesParams>({ exchange, symbol, timeframe, from, to });
+	const annotationParams = $derived<AnnotationParams>({ strategyId, from, to });
 
-	// TanStack Query handles caching/dedup. The query key is derived from the
-	// params, so changing any selector refetches and refreshes the chart. The 10s
-	// live polling plugs in here in a later lot (refetchInterval); #18 stays
-	// fetch-on-change only.
-	const query = createQuery(() => ({
+	// Candles drive the chart's loading/error/empty/chart states. The query key is
+	// derived from the params, so changing any selector refetches.
+	const candlesQuery = createQuery(() => ({
 		queryKey: candlesQueryKey(params),
 		queryFn: () => fetchCandles(params)
 	}));
 
-	const candles = $derived(query.data ?? []);
+	// Orders (buy/sell markers) and decisions (reason + snapshot) are best-effort
+	// annotations: if they fail the chart still renders, just without markers.
+	const ordersQuery = createQuery(() => ({
+		queryKey: ordersQueryKey(annotationParams),
+		queryFn: () => fetchOrders(annotationParams),
+		enabled: strategyId !== ''
+	}));
+	const decisionsQuery = createQuery(() => ({
+		queryKey: decisionsQueryKey(annotationParams),
+		queryFn: () => fetchDecisions(annotationParams),
+		enabled: strategyId !== ''
+	}));
+
+	const candles = $derived(candlesQuery.data ?? []);
+	const orders = $derived(ordersQuery.data ?? []);
+	const decisions = $derived(decisionsQuery.data ?? []);
+
+	const markers = $derived(ordersToMarkers(orders));
+	// Bucket-aligned lookup so a crosshair landing on a bar resolves to the
+	// decisions whose orders fall in that candle.
+	const lookup = $derived(buildDecisionLookup(orders, decisions, timeframeSeconds(timeframe) ?? 0));
+
+	let containerWidth = $state(0);
+	let hovered = $state<{ decision: LiveDecision; extra: number; x: number; y: number } | null>(
+		null
+	);
+
+	const TOOLTIP_WIDTH = 256; // matches DecisionTooltip's w-64
+
+	function handleHover(info: HoverInfo | null): void {
+		if (!info) {
+			hovered = null;
+			return;
+		}
+		const list = lookup.get(Number(info.time));
+		hovered =
+			list && list.length > 0
+				? { decision: list[0], extra: list.length - 1, x: info.x, y: info.y }
+				: null;
+	}
+
+	// Flip the tooltip to the left of the cursor when it would overflow the right
+	// edge; keep a small margin from the container edges.
+	const tooltipLeft = $derived.by(() => {
+		if (!hovered) return 0;
+		const right = hovered.x + 12 + TOOLTIP_WIDTH;
+		return right > containerWidth ? Math.max(8, hovered.x - TOOLTIP_WIDTH - 12) : hovered.x + 12;
+	});
+	const tooltipTop = $derived(hovered ? hovered.y + 12 : 0);
 </script>
 
 <div
 	class="relative min-h-[280px] w-full overflow-hidden rounded-md border border-slate-800 bg-slate-900/60"
 	data-testid="live-chart"
+	bind:clientWidth={containerWidth}
 >
-	{#if query.isError}
+	{#if candlesQuery.isError}
 		<div
 			class="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 p-6 text-center"
 			data-testid="live-chart-error"
@@ -36,13 +100,13 @@
 			<button
 				type="button"
 				data-testid="live-chart-retry"
-				onclick={() => query.refetch()}
+				onclick={() => candlesQuery.refetch()}
 				class="rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 transition-colors hover:bg-slate-700"
 			>
 				Réessayer
 			</button>
 		</div>
-	{:else if query.isPending}
+	{:else if candlesQuery.isPending}
 		<div
 			class="flex h-full min-h-[280px] items-center justify-center p-6"
 			data-testid="live-chart-loading"
@@ -66,7 +130,15 @@
 		     series; within one selection it stays mounted (preserving zoom/pan for
 		     the live polling to come). -->
 		{#key candlesQueryKey(params).join('|')}
-			<Chart {candles} />
+			<Chart {candles} {markers} onHover={handleHover} />
 		{/key}
+		{#if hovered}
+			<div
+				class="pointer-events-none absolute z-10"
+				style="left: {tooltipLeft}px; top: {tooltipTop}px;"
+			>
+				<DecisionTooltip decision={hovered.decision} extra={hovered.extra} />
+			</div>
+		{/if}
 	{/if}
 </div>

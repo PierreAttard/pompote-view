@@ -17,3 +17,4 @@ export type BacktestMetrics = components['schemas']['BacktestMetricsDto'];
 export type Strategy = components['schemas']['StrategyDto'];
 export type LiveFill = components['schemas']['LiveFillDto'];
 export type LiveDecision = components['schemas']['LiveDecisionDto'];
+export type Order = components['schemas']['OrderDto'];

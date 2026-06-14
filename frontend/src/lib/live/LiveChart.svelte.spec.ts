@@ -4,18 +4,24 @@ import { render } from 'vitest-browser-svelte';
 import LiveChart from './LiveChart.svelte';
 import type { Candle } from '$lib/api/types';
 
-// Drive the four render states by stubbing the query result. The query wiring
-// itself (key + same-origin fetch) is covered by `candles.spec.ts`; here we only
-// assert how the component reacts to pending/error/empty/success.
-const query = vi.hoisted(() => ({
+// Drive the candles render states by stubbing its query result. Orders/decisions
+// queries are best-effort annotations; they return empty data here so the focus
+// stays on the candles-driven states. The query wiring/mappers are covered by
+// `candles.spec.ts` / `annotations.spec.ts`.
+const candlesResult = vi.hoisted(() => ({
 	current: {} as { isPending: boolean; isError: boolean; data?: Candle[]; refetch: () => void }
 }));
 
 vi.mock('@tanstack/svelte-query', () => ({
-	createQuery: () => query.current
+	createQuery: (opts: () => { queryKey: unknown[] }) => {
+		const resource = opts().queryKey[0];
+		if (resource === 'candles') return candlesResult.current;
+		return { isPending: false, isError: false, data: [], refetch: vi.fn() };
+	}
 }));
 
 const props = {
+	strategyId: 'strat-1',
 	exchange: 'binance',
 	symbol: 'BTCUSDT',
 	timeframe: '1h',
@@ -32,14 +38,14 @@ function candles(): Candle[] {
 
 describe('LiveChart.svelte', () => {
 	it('shows the loading state while the query is pending', async () => {
-		query.current = { isPending: true, isError: false, refetch: vi.fn() };
+		candlesResult.current = { isPending: true, isError: false, refetch: vi.fn() };
 		render(LiveChart, props);
 		await expect.element(page.getByTestId('live-chart-loading')).toBeInTheDocument();
 	});
 
 	it('shows an error with a working retry button', async () => {
 		const refetch = vi.fn();
-		query.current = { isPending: false, isError: true, refetch };
+		candlesResult.current = { isPending: false, isError: true, refetch };
 		render(LiveChart, props);
 		await expect.element(page.getByTestId('live-chart-error')).toBeInTheDocument();
 		await page.getByTestId('live-chart-retry').click();
@@ -47,13 +53,13 @@ describe('LiveChart.svelte', () => {
 	});
 
 	it('shows an empty state when the window has no candles', async () => {
-		query.current = { isPending: false, isError: false, data: [], refetch: vi.fn() };
+		candlesResult.current = { isPending: false, isError: false, data: [], refetch: vi.fn() };
 		render(LiveChart, props);
 		await expect.element(page.getByTestId('live-chart-empty')).toBeInTheDocument();
 	});
 
 	it('renders the chart when candles are available', async () => {
-		query.current = { isPending: false, isError: false, data: candles(), refetch: vi.fn() };
+		candlesResult.current = { isPending: false, isError: false, data: candles(), refetch: vi.fn() };
 		render(LiveChart, props);
 		const chart = page.getByTestId('chart');
 		await expect.element(chart).toBeInTheDocument();

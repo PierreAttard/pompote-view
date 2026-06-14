@@ -119,7 +119,7 @@
 			<span class="text-slate-500"> · {exchange} · {symbol} · {timeframe}</span>
 			<span class="ml-1 font-mono text-xs text-slate-500">{window.from} → {window.to}</span>
 		</div>
-		<LiveChart {exchange} {symbol} {timeframe} from={window.from} to={window.to} />
+		<LiveChart {strategyId} {exchange} {symbol} {timeframe} from={window.from} to={window.to} />
 	{:else}
 		<div
 			class="flex min-h-[280px] items-center justify-center rounded-md border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center text-sm"
