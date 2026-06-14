@@ -10,3 +10,4 @@ import type { components } from './types.gen';
 export type BacktestRunSummary = components['schemas']['BacktestRunSummaryDto'];
 export type BacktestRunDetail = components['schemas']['BacktestRunDetailDto'];
 export type BacktestCandles = components['schemas']['BacktestCandlesDto'];
+export type Candle = components['schemas']['CandleDto'];
