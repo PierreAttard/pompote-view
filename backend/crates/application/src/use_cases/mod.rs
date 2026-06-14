@@ -14,4 +14,7 @@ pub use backtests::{
 pub use candles::{CandleSeries, GetCandles, GetCandlesError, GetCandlesInput};
 pub use orders::{GetOrders, GetOrdersError, GetOrdersInput, OrderSeries};
 pub use readiness::{ReadinessOutcome, ReadinessProbe};
-pub use strategies::{GetStrategyFills, GetStrategyFillsInput, ListStrategies, StrategyError};
+pub use strategies::{
+    GetStrategyDecisions, GetStrategyDecisionsInput, GetStrategyFills, GetStrategyFillsInput,
+    ListStrategies, StrategyError,
+};

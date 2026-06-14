@@ -157,6 +157,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/monitoring/strategies/{id}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Handler for `GET /api/v1/monitoring/strategies/{id}/decisions`. */
+        get: operations["get_strategy_decisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/monitoring/strategies/{id}/fills": {
         parameters: {
             query?: never;
@@ -529,6 +546,33 @@ export interface components {
              * @example sell
              */
             side: string;
+        };
+        /** @description A live decision with its optional market-context snapshot. */
+        LiveDecisionDto: {
+            /**
+             * Format: date-time
+             * @description Wall-clock time the decision was recorded (RFC3339).
+             */
+            created_at: string;
+            /**
+             * Format: uuid
+             * @description Primary key.
+             */
+            decision_id: string;
+            /** @description Opaque market-context snapshot (`null` when none was recorded). */
+            market_context?: Record<string, never> | null;
+            /**
+             * Format: int32
+             * @description Number of orders emitted by this decision.
+             */
+            orders_count: number;
+            /** @description Free-text rationale recorded by the strategy engine. */
+            reason: string;
+            /**
+             * Format: uuid
+             * @description Owning trading session.
+             */
+            session_id: string;
         };
         /** @description A live fill (execution marker). */
         LiveFillDto: {
@@ -1202,6 +1246,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StrategyDto"][];
+                };
+            };
+            /** @description Missing or invalid `X-API-Key` header. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unexpected internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyErrorBody"];
+                };
+            };
+            /** @description Datastore temporarily unreachable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyErrorBody"];
+                };
+            };
+        };
+    };
+    get_strategy_decisions: {
+        parameters: {
+            query: {
+                /** @description Inclusive lower bound on `executed_at` (RFC3339). */
+                from: string;
+                /** @description Exclusive upper bound on `executed_at` (RFC3339). Defaults to `Clock::now()`. */
+                to?: string | null;
+                /** @description Row cap (defaults to [`MAX_ORDER_ROWS`], rejected above it). */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description Strategy identifier */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live decisions (with market context) for the strategy on the window, ordered by ascending `created_at`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveDecisionDto"][];
+                };
+            };
+            /** @description Invalid range or limit out of bounds. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyErrorBody"];
                 };
             };
             /** @description Missing or invalid `X-API-Key` header. */

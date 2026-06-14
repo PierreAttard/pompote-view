@@ -32,6 +32,10 @@ pub fn build_router(state: AppState) -> Router {
             "/strategies/{id}/fills",
             get(strategies::get_strategy_fills),
         )
+        .route(
+            "/strategies/{id}/decisions",
+            get(strategies::get_strategy_decisions),
+        )
         .route("/backtests", get(backtests::list_backtests))
         .route("/backtests/{run_id}", get(backtests::get_backtest))
         .route(
@@ -143,7 +147,7 @@ mod tests {
             get_backtest_candles,
             get_backtest_metrics,
         ) = super::super::state::test_support::stub_backtest_use_cases();
-        let (list_strategies, get_strategy_fills) =
+        let (list_strategies, get_strategy_fills, get_strategy_decisions) =
             super::super::state::test_support::stub_strategy_use_cases();
         AppState {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(AlwaysOk))),
@@ -160,6 +164,7 @@ mod tests {
             get_backtest_metrics,
             list_strategies,
             get_strategy_fills,
+            get_strategy_decisions,
         }
     }
 

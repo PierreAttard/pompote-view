@@ -10,12 +10,46 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use domain::decision::LiveDecision;
 use domain::fill::LiveFill;
 use domain::order::{MAX_ORDER_ROWS, OrderQueryError};
 use domain::strategy::Strategy;
 use uuid::Uuid;
 
-use crate::ports::{Clock, RepositoryError, StrategyFillQuery, StrategyRepository};
+use crate::ports::{Clock, RepositoryError, StrategyRepository, StrategyWindowQuery};
+
+/// Shared validation for the windowed strategy series (fills/decisions):
+/// defaults `to` to `now`, requires `from < to`, defaults `limit` to
+/// [`MAX_ORDER_ROWS`] and rejects `0` / over-cap (never truncates silently).
+fn build_window_query(
+    strategy_id: Uuid,
+    from: DateTime<Utc>,
+    to: Option<DateTime<Utc>>,
+    limit: Option<usize>,
+    clock: &dyn Clock,
+) -> Result<StrategyWindowQuery, OrderQueryError> {
+    let to = to.unwrap_or_else(|| clock.now());
+    if from >= to {
+        return Err(OrderQueryError::InvalidRange);
+    }
+    let limit = match limit {
+        None => MAX_ORDER_ROWS,
+        Some(0) => return Err(OrderQueryError::InvalidLimit),
+        Some(n) if n > MAX_ORDER_ROWS => {
+            return Err(OrderQueryError::TooManyRows {
+                requested: n,
+                max: MAX_ORDER_ROWS,
+            });
+        }
+        Some(n) => n,
+    };
+    Ok(StrategyWindowQuery {
+        strategy_id,
+        from,
+        to,
+        limit,
+    })
+}
 
 /// Top-level error shared by the strategy use cases.
 #[derive(Debug, thiserror::Error)]
@@ -72,28 +106,55 @@ impl GetStrategyFills {
 
     /// Validates the window/limit then queries the repository.
     pub async fn run(&self, input: GetStrategyFillsInput) -> Result<Vec<LiveFill>, StrategyError> {
-        let to = input.to.unwrap_or_else(|| self.clock.now());
-        if input.from >= to {
-            return Err(StrategyError::Domain(OrderQueryError::InvalidRange));
-        }
-        let limit = match input.limit {
-            None => MAX_ORDER_ROWS,
-            Some(0) => return Err(StrategyError::Domain(OrderQueryError::InvalidLimit)),
-            Some(n) if n > MAX_ORDER_ROWS => {
-                return Err(StrategyError::Domain(OrderQueryError::TooManyRows {
-                    requested: n,
-                    max: MAX_ORDER_ROWS,
-                }));
-            }
-            Some(n) => n,
-        };
-        let query = StrategyFillQuery {
-            strategy_id: input.strategy_id,
-            from: input.from,
-            to,
-            limit,
-        };
+        let query = build_window_query(
+            input.strategy_id,
+            input.from,
+            input.to,
+            input.limit,
+            self.clock.as_ref(),
+        )?;
         Ok(self.repo.fetch_fills_for_strategy(&query).await?)
+    }
+}
+
+/// Input for [`GetStrategyDecisions::run`].
+#[derive(Debug, Clone)]
+pub struct GetStrategyDecisionsInput {
+    /// Strategy identifier.
+    pub strategy_id: Uuid,
+    /// Inclusive lower bound on `created_at`.
+    pub from: DateTime<Utc>,
+    /// Exclusive upper bound on `created_at`. `None` means "use `Clock::now()`".
+    pub to: Option<DateTime<Utc>>,
+    /// Row cap. `None` means "use [`MAX_ORDER_ROWS`]".
+    pub limit: Option<usize>,
+}
+
+/// Use case: fetch a strategy's live decisions (with market context) on a window.
+pub struct GetStrategyDecisions {
+    repo: Arc<dyn StrategyRepository>,
+    clock: Arc<dyn Clock>,
+}
+
+impl GetStrategyDecisions {
+    /// Builds the use case over the given repository and clock ports.
+    pub fn new(repo: Arc<dyn StrategyRepository>, clock: Arc<dyn Clock>) -> Self {
+        Self { repo, clock }
+    }
+
+    /// Validates the window/limit then queries the repository.
+    pub async fn run(
+        &self,
+        input: GetStrategyDecisionsInput,
+    ) -> Result<Vec<LiveDecision>, StrategyError> {
+        let query = build_window_query(
+            input.strategy_id,
+            input.from,
+            input.to,
+            input.limit,
+            self.clock.as_ref(),
+        )?;
+        Ok(self.repo.fetch_decisions_for_strategy(&query).await?)
     }
 }
 
@@ -110,7 +171,8 @@ mod tests {
     struct FakeRepo {
         strategies: Vec<Strategy>,
         fills: Vec<LiveFill>,
-        last_query: Mutex<Option<StrategyFillQuery>>,
+        decisions: Vec<LiveDecision>,
+        last_query: Mutex<Option<StrategyWindowQuery>>,
     }
 
     #[async_trait]
@@ -120,10 +182,17 @@ mod tests {
         }
         async fn fetch_fills_for_strategy(
             &self,
-            query: &StrategyFillQuery,
+            query: &StrategyWindowQuery,
         ) -> Result<Vec<LiveFill>, RepositoryError> {
             *self.last_query.lock().await = Some(query.clone());
             Ok(self.fills.clone())
+        }
+        async fn fetch_decisions_for_strategy(
+            &self,
+            query: &StrategyWindowQuery,
+        ) -> Result<Vec<LiveDecision>, RepositoryError> {
+            *self.last_query.lock().await = Some(query.clone());
+            Ok(self.decisions.clone())
         }
     }
 
@@ -135,8 +204,14 @@ mod tests {
         }
         async fn fetch_fills_for_strategy(
             &self,
-            _query: &StrategyFillQuery,
+            _query: &StrategyWindowQuery,
         ) -> Result<Vec<LiveFill>, RepositoryError> {
+            Err(RepositoryError::Unavailable("simulated".into()))
+        }
+        async fn fetch_decisions_for_strategy(
+            &self,
+            _query: &StrategyWindowQuery,
+        ) -> Result<Vec<LiveDecision>, RepositoryError> {
             Err(RepositoryError::Unavailable("simulated".into()))
         }
     }
@@ -254,5 +329,51 @@ mod tests {
             .unwrap();
         assert_eq!(out.len(), 1);
         assert!(out[0].is_paper);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decisions_validate_and_return_from_repo() {
+        let repo = Arc::new(FakeRepo {
+            decisions: vec![LiveDecision {
+                decision_id: Uuid::nil(),
+                session_id: Uuid::nil(),
+                created_at: t(10),
+                reason: "rsi_oversold".into(),
+                orders_count: 1,
+                market_context: Some(serde_json::json!({ "rsi": 28.0 })),
+            }],
+            ..Default::default()
+        });
+        let uc = GetStrategyDecisions::new(repo.clone(), Arc::new(FixedClock(t(12))));
+        // Inverted range is rejected with the shared validation.
+        let err = uc
+            .run(GetStrategyDecisionsInput {
+                strategy_id: Uuid::nil(),
+                from: t(10),
+                to: Some(t(8)),
+                limit: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            StrategyError::Domain(OrderQueryError::InvalidRange)
+        ));
+        // Valid window returns the decision with its context.
+        let out = uc
+            .run(GetStrategyDecisionsInput {
+                strategy_id: Uuid::nil(),
+                from: t(9),
+                to: Some(t(11)),
+                limit: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(out.len(), 1);
+        assert!(out[0].market_context.is_some());
+        assert_eq!(
+            repo.last_query.lock().await.clone().unwrap().limit,
+            MAX_ORDER_ROWS
+        );
     }
 }

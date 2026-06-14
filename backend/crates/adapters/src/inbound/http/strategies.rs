@@ -21,11 +21,12 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use application::ports::RepositoryError;
-use application::use_cases::{GetStrategyFillsInput, StrategyError};
+use application::use_cases::{GetStrategyDecisionsInput, GetStrategyFillsInput, StrategyError};
 use domain::candle::Timeframe;
 use domain::order::{MAX_ORDER_ROWS, OrderQueryError};
 
@@ -309,16 +310,86 @@ pub async fn get_strategy_fills(
     Ok(Json(fills.into_iter().map(LiveFillDto::from).collect()))
 }
 
+/// A live decision with its optional market-context snapshot.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LiveDecisionDto {
+    /// Primary key.
+    pub decision_id: Uuid,
+    /// Owning trading session.
+    pub session_id: Uuid,
+    /// Wall-clock time the decision was recorded (RFC3339).
+    pub created_at: DateTime<Utc>,
+    /// Free-text rationale recorded by the strategy engine.
+    pub reason: String,
+    /// Number of orders emitted by this decision.
+    pub orders_count: i32,
+    /// Opaque market-context snapshot (`null` when none was recorded).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<Object>)]
+    pub market_context: Option<Value>,
+}
+
+impl From<domain::decision::LiveDecision> for LiveDecisionDto {
+    fn from(d: domain::decision::LiveDecision) -> Self {
+        Self {
+            decision_id: d.decision_id,
+            session_id: d.session_id,
+            created_at: d.created_at,
+            reason: d.reason,
+            orders_count: d.orders_count,
+            market_context: d.market_context,
+        }
+    }
+}
+
+/// Handler for `GET /api/v1/monitoring/strategies/{id}/decisions`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/monitoring/strategies/{id}/decisions",
+    tag = "monitoring",
+    params(
+        ("id" = Uuid, Path, description = "Strategy identifier"),
+        FillQueryParams,
+    ),
+    responses(
+        (status = 200, description = "Live decisions (with market context) for the strategy on the window, ordered by ascending `created_at`.", body = [LiveDecisionDto]),
+        (status = 400, description = "Invalid range or limit out of bounds.", body = StrategyErrorBody),
+        (status = 401, description = "Missing or invalid `X-API-Key` header."),
+        (status = 503, description = "Datastore temporarily unreachable.", body = StrategyErrorBody),
+        (status = 500, description = "Unexpected internal error.", body = StrategyErrorBody),
+    ),
+    security(("x_api_key" = [])),
+)]
+pub async fn get_strategy_decisions(
+    State(state): State<AppState>,
+    Path(strategy_id): Path<Uuid>,
+    Query(params): Query<FillQueryParams>,
+) -> Result<Json<Vec<LiveDecisionDto>>, StrategyApiError> {
+    let decisions = state
+        .get_strategy_decisions
+        .run(GetStrategyDecisionsInput {
+            strategy_id,
+            from: params.from,
+            to: params.to,
+            limit: params.limit,
+        })
+        .await?;
+    Ok(Json(
+        decisions.into_iter().map(LiveDecisionDto::from).collect(),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use application::ports::{RepositoryError, StrategyFillQuery, StrategyRepository};
-    use application::use_cases::{GetStrategyFills, ListStrategies};
+    use application::ports::{RepositoryError, StrategyRepository, StrategyWindowQuery};
+    use application::use_cases::{GetStrategyDecisions, GetStrategyFills, ListStrategies};
     use async_trait::async_trait;
     use axum::{Router, body::Body, http::Request, routing::get};
     use chrono::TimeZone;
+    use domain::decision::LiveDecision;
     use domain::fill::LiveFill;
     use domain::order::OrderSide;
     use domain::strategy::Strategy;
@@ -329,6 +400,7 @@ mod tests {
     struct StubRepo {
         strategies: Vec<Strategy>,
         fills: Vec<LiveFill>,
+        decisions: Vec<LiveDecision>,
     }
 
     #[async_trait]
@@ -338,9 +410,15 @@ mod tests {
         }
         async fn fetch_fills_for_strategy(
             &self,
-            _q: &StrategyFillQuery,
+            _q: &StrategyWindowQuery,
         ) -> Result<Vec<LiveFill>, RepositoryError> {
             Ok(self.fills.clone())
+        }
+        async fn fetch_decisions_for_strategy(
+            &self,
+            _q: &StrategyWindowQuery,
+        ) -> Result<Vec<LiveDecision>, RepositoryError> {
+            Ok(self.decisions.clone())
         }
     }
 
@@ -353,14 +431,20 @@ mod tests {
 
     fn app(repo: Arc<StubRepo>) -> Router {
         let list = Arc::new(ListStrategies::new(repo.clone()));
-        let fills = Arc::new(GetStrategyFills::new(repo, Arc::new(FixedClock)));
-        let state = super::super::state::test_support::state_with_strategies(list, fills);
+        let fills = Arc::new(GetStrategyFills::new(repo.clone(), Arc::new(FixedClock)));
+        let decisions = Arc::new(GetStrategyDecisions::new(repo, Arc::new(FixedClock)));
+        let state =
+            super::super::state::test_support::state_with_strategies(list, fills, decisions);
         Router::new()
             .route("/api/v1/monitoring/timeframes", get(get_timeframes))
             .route("/api/v1/monitoring/strategies", get(list_strategies))
             .route(
                 "/api/v1/monitoring/strategies/{id}/fills",
                 get(get_strategy_fills),
+            )
+            .route(
+                "/api/v1/monitoring/strategies/{id}/decisions",
+                get(get_strategy_decisions),
             )
             .with_state(state)
     }
@@ -466,5 +550,35 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
         assert_eq!(body_json(resp).await["error"], "invalid_range");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decisions_returns_rows_with_market_context() {
+        let app = app(Arc::new(StubRepo {
+            decisions: vec![LiveDecision {
+                decision_id: Uuid::nil(),
+                session_id: Uuid::nil(),
+                created_at: Utc.with_ymd_and_hms(2026, 6, 1, 10, 0, 0).unwrap(),
+                reason: "rsi_oversold".into(),
+                orders_count: 1,
+                market_context: Some(serde_json::json!({ "rsi": 28.0 })),
+            }],
+            ..Default::default()
+        }));
+        let resp = app
+            .oneshot(
+                Request::get(
+                    "/api/v1/monitoring/strategies/00000000-0000-0000-0000-000000000000/decisions\
+                     ?from=2026-06-01T00:00:00Z&to=2026-06-01T11:00:00Z",
+                )
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body[0]["reason"], "rsi_oversold");
+        assert_eq!(body[0]["market_context"]["rsi"], 28.0);
     }
 }
