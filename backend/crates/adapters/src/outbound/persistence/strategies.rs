@@ -10,8 +10,9 @@
 //! [`OrderSide`] at the boundary (defence-in-depth: a parse failure signals
 //! schema drift → `500`).
 
-use application::ports::{RepositoryError, StrategyFillQuery, StrategyRepository};
+use application::ports::{RepositoryError, StrategyRepository, StrategyWindowQuery};
 use async_trait::async_trait;
+use domain::decision::LiveDecision;
 use domain::fill::LiveFill;
 use domain::order::{InvalidOrderSide, OrderSide};
 use domain::strategy::Strategy;
@@ -64,7 +65,7 @@ impl StrategyRepository for SqlxStrategyRepository {
 
     async fn fetch_fills_for_strategy(
         &self,
-        query: &StrategyFillQuery,
+        query: &StrategyWindowQuery,
     ) -> Result<Vec<LiveFill>, RepositoryError> {
         let limit = i64::try_from(query.limit).map_err(|_| {
             RepositoryError::Internal(format!(
@@ -115,6 +116,66 @@ impl StrategyRepository for SqlxStrategyRepository {
                 })
             })
             .collect()
+    }
+
+    async fn fetch_decisions_for_strategy(
+        &self,
+        query: &StrategyWindowQuery,
+    ) -> Result<Vec<LiveDecision>, RepositoryError> {
+        let limit = i64::try_from(query.limit).map_err(|_| {
+            RepositoryError::Internal(format!(
+                "limit `{}` does not fit in i64 (should have been capped by the use case)",
+                query.limit
+            ))
+        })?;
+        // `decision_market_context` is keyed `(time, decision_id)`, so a decision
+        // could in principle have several context rows. A LEFT JOIN LATERAL
+        // picking the most recent keeps exactly one row per decision (no fan-out
+        // that would inflate the result past the cap); `snapshot` is `NULL` when
+        // no context exists.
+        let rows = sqlx::query!(
+            r#"
+            SELECT
+                d.id           AS "id!: uuid::Uuid",
+                d.session_id   AS "session_id!: uuid::Uuid",
+                d.created_at   AS "created_at!: chrono::DateTime<chrono::Utc>",
+                d.reason       AS "reason!",
+                d.orders_count AS "orders_count!",
+                c.snapshot     AS "snapshot?: serde_json::Value"
+            FROM strategy_decisions d
+            LEFT JOIN LATERAL (
+                SELECT snapshot
+                FROM decision_market_context c
+                WHERE c.decision_id = d.id
+                ORDER BY c.time DESC
+                LIMIT 1
+            ) c ON true
+            WHERE d.strategy_id = $1
+              AND d.created_at >= $2
+              AND d.created_at < $3
+            ORDER BY d.created_at ASC
+            LIMIT $4
+            "#,
+            query.strategy_id,
+            query.from,
+            query.to,
+            limit,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| LiveDecision {
+                decision_id: row.id,
+                session_id: row.session_id,
+                created_at: row.created_at,
+                reason: row.reason,
+                orders_count: row.orders_count,
+                market_context: row.snapshot,
+            })
+            .collect())
     }
 }
 

@@ -47,6 +47,7 @@ use super::{backtests, candles, orders, strategies};
         strategies::get_timeframes,
         strategies::list_strategies,
         strategies::get_strategy_fills,
+        strategies::get_strategy_decisions,
     ),
     components(
         schemas(
@@ -56,6 +57,7 @@ use super::{backtests, candles, orders, strategies};
             orders::OrderErrorBody,
             strategies::StrategyDto,
             strategies::LiveFillDto,
+            strategies::LiveDecisionDto,
             strategies::StrategyErrorBody,
             backtests::BacktestRunSummaryDto,
             backtests::BacktestRunDetailDto,

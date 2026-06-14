@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use application::use_cases::{
     GetBacktestRun, GetBacktestRunCandles, GetBacktestRunMetrics, GetBacktestSeries, GetCandles,
-    GetOrders, GetStrategyFills, ListBacktestRuns, ListStrategies, ReadinessProbe,
+    GetOrders, GetStrategyDecisions, GetStrategyFills, ListBacktestRuns, ListStrategies,
+    ReadinessProbe,
 };
 
 /// Immutable runtime state shared by every HTTP handler.
@@ -37,6 +38,8 @@ pub struct AppState {
     pub list_strategies: Arc<ListStrategies>,
     /// `GET /api/v1/monitoring/strategies/:id/fills` use case.
     pub get_strategy_fills: Arc<GetStrategyFills>,
+    /// `GET /api/v1/monitoring/strategies/:id/decisions` use case.
+    pub get_strategy_decisions: Arc<GetStrategyDecisions>,
 }
 
 /// Test-only stubs shared across the HTTP module's unit tests.
@@ -56,17 +59,18 @@ pub(crate) mod test_support {
     use application::ports::{
         BacktestRepository, BacktestRunListQuery, BacktestSeriesQuery, CandleQuery,
         CandleRepository, Clock, HealthCheckError, HealthChecker, OrderQuery, OrderRepository,
-        RepositoryError, StrategyFillQuery, StrategyRepository,
+        RepositoryError, StrategyRepository, StrategyWindowQuery,
     };
     use application::use_cases::{
         GetBacktestRun, GetBacktestRunCandles, GetBacktestRunMetrics, GetBacktestSeries,
-        GetCandles, GetOrders, GetStrategyFills, ListBacktestRuns, ListStrategies, ReadinessProbe,
+        GetCandles, GetOrders, GetStrategyDecisions, GetStrategyFills, ListBacktestRuns,
+        ListStrategies, ReadinessProbe,
     };
     use async_trait::async_trait;
     use chrono::{DateTime, Utc};
     use domain::backtest::{BacktestOrder, BacktestRun, BacktestRunDetail, FillAggregate};
     use domain::candle::Candle;
-    use domain::decision::Decision;
+    use domain::decision::{Decision, LiveDecision};
     use domain::fill::{Fill, LiveFill};
     use domain::order::Order;
     use domain::strategy::Strategy;
@@ -147,8 +151,14 @@ pub(crate) mod test_support {
         }
         async fn fetch_fills_for_strategy(
             &self,
-            _q: &StrategyFillQuery,
+            _q: &StrategyWindowQuery,
         ) -> Result<Vec<LiveFill>, RepositoryError> {
+            Ok(vec![])
+        }
+        async fn fetch_decisions_for_strategy(
+            &self,
+            _q: &StrategyWindowQuery,
+        ) -> Result<Vec<LiveDecision>, RepositoryError> {
             Ok(vec![])
         }
     }
@@ -160,12 +170,17 @@ pub(crate) mod test_support {
         }
     }
 
-    /// Builds the two strategy use cases over an empty repository.
-    pub(crate) fn stub_strategy_use_cases() -> (Arc<ListStrategies>, Arc<GetStrategyFills>) {
+    /// Builds the three strategy use cases over an empty repository.
+    pub(crate) fn stub_strategy_use_cases() -> (
+        Arc<ListStrategies>,
+        Arc<GetStrategyFills>,
+        Arc<GetStrategyDecisions>,
+    ) {
         let repo = Arc::new(EmptyStrategies);
         (
             Arc::new(ListStrategies::new(repo.clone())),
-            Arc::new(GetStrategyFills::new(repo, Arc::new(NowClock))),
+            Arc::new(GetStrategyFills::new(repo.clone(), Arc::new(NowClock))),
+            Arc::new(GetStrategyDecisions::new(repo, Arc::new(NowClock))),
         )
     }
 
@@ -198,7 +213,8 @@ pub(crate) mod test_support {
         get_backtest_candles: Arc<GetBacktestRunCandles>,
         get_backtest_metrics: Arc<GetBacktestRunMetrics>,
     ) -> AppState {
-        let (list_strategies, get_strategy_fills) = stub_strategy_use_cases();
+        let (list_strategies, get_strategy_fills, get_strategy_decisions) =
+            stub_strategy_use_cases();
         AppState {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(AlwaysOk))),
             api_key: Arc::new(b"unused".to_vec()),
@@ -211,6 +227,7 @@ pub(crate) mod test_support {
             get_backtest_metrics,
             list_strategies,
             get_strategy_fills,
+            get_strategy_decisions,
         }
     }
 
@@ -219,6 +236,7 @@ pub(crate) mod test_support {
     pub(crate) fn state_with_strategies(
         list_strategies: Arc<ListStrategies>,
         get_strategy_fills: Arc<GetStrategyFills>,
+        get_strategy_decisions: Arc<GetStrategyDecisions>,
     ) -> AppState {
         let (
             list_backtest_runs,
@@ -239,6 +257,7 @@ pub(crate) mod test_support {
             get_backtest_metrics,
             list_strategies,
             get_strategy_fills,
+            get_strategy_decisions,
         }
     }
 }

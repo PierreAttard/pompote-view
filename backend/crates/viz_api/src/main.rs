@@ -19,7 +19,8 @@ use adapters::outbound::persistence::{
 };
 use application::use_cases::{
     GetBacktestRun, GetBacktestRunCandles, GetBacktestRunMetrics, GetBacktestSeries, GetCandles,
-    GetOrders, GetStrategyFills, ListBacktestRuns, ListStrategies, ReadinessProbe,
+    GetOrders, GetStrategyDecisions, GetStrategyFills, ListBacktestRuns, ListStrategies,
+    ReadinessProbe,
 };
 use std::time::Duration;
 
@@ -99,7 +100,8 @@ async fn main() -> anyhow::Result<()> {
     ));
     let get_backtest_metrics = Arc::new(GetBacktestRunMetrics::new(backtest_repo));
     let list_strategies = Arc::new(ListStrategies::new(strategy_repo.clone()));
-    let get_strategy_fills = Arc::new(GetStrategyFills::new(strategy_repo, clock));
+    let get_strategy_fills = Arc::new(GetStrategyFills::new(strategy_repo.clone(), clock.clone()));
+    let get_strategy_decisions = Arc::new(GetStrategyDecisions::new(strategy_repo, clock));
 
     let state = AppState {
         readiness,
@@ -113,6 +115,7 @@ async fn main() -> anyhow::Result<()> {
         get_backtest_metrics,
         list_strategies,
         get_strategy_fills,
+        get_strategy_decisions,
     };
 
     let app = build_router(state).merge(openapi_router(cfg.enable_swagger_ui));

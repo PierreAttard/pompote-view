@@ -42,7 +42,8 @@ use adapters::outbound::persistence::{
 };
 use application::use_cases::{
     GetBacktestRun, GetBacktestRunCandles, GetBacktestRunMetrics, GetBacktestSeries, GetCandles,
-    GetOrders, GetStrategyFills, ListBacktestRuns, ListStrategies, ReadinessProbe,
+    GetOrders, GetStrategyDecisions, GetStrategyFills, ListBacktestRuns, ListStrategies,
+    ReadinessProbe,
 };
 use axum::Router;
 use sqlx::PgPool;
@@ -55,6 +56,8 @@ use tokio::net::TcpListener;
 const API_KEY: &str = "integration-test-key-0123456789";
 const RUN_ID: &str = "11111111-1111-1111-1111-111111111111";
 const STRATEGY_ID: &str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+const SESSION_ID: &str = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+const LIVE_DECISION_ID: &str = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 
 /// Owned test context: the container (kept alive for the whole test) and a
 /// client pointed at the running server.
@@ -237,6 +240,40 @@ async fn seed(pool: &PgPool) {
     .execute(pool)
     .await
     .expect("seed strategy");
+
+    // A live trading session + decision + market context, to exercise the
+    // /strategies/{id}/decisions LEFT JOIN LATERAL against the real schema.
+    sqlx::query(
+        "INSERT INTO trading_sessions (id, strategy_id, strategy_kind, mode, status, exchanges) \
+         VALUES ($1::uuid, $2::uuid, 'directional', 'paper', 'running', '[]'::jsonb)",
+    )
+    .bind(SESSION_ID)
+    .bind(STRATEGY_ID)
+    .execute(pool)
+    .await
+    .expect("seed session");
+
+    sqlx::query(
+        "INSERT INTO strategy_decisions (id, session_id, strategy_id, strategy_kind, \
+         orders_count, reason, created_at) VALUES ($1::uuid, $2::uuid, $3::uuid, 'directional', \
+         1, 'rsi_oversold', '2026-06-01T01:30:00Z')",
+    )
+    .bind(LIVE_DECISION_ID)
+    .bind(SESSION_ID)
+    .bind(STRATEGY_ID)
+    .execute(pool)
+    .await
+    .expect("seed live decision");
+
+    sqlx::query(
+        "INSERT INTO decision_market_context (time, decision_id, exchange, symbol, timeframe, \
+         snapshot) VALUES ('2026-06-01T01:30:00Z', $1::uuid, 'binance', 'BTCUSDT', '1h', \
+         '{\"rsi\": 28.0}'::jsonb)",
+    )
+    .bind(LIVE_DECISION_ID)
+    .execute(pool)
+    .await
+    .expect("seed market context");
 }
 
 /// Wires the real composition root over the test pool (mirrors `main.rs`).
@@ -264,7 +301,8 @@ fn build_app(pool: PgPool) -> Router {
         )),
         get_backtest_metrics: Arc::new(GetBacktestRunMetrics::new(backtest_repo)),
         list_strategies: Arc::new(ListStrategies::new(strategy_repo.clone())),
-        get_strategy_fills: Arc::new(GetStrategyFills::new(strategy_repo, clock)),
+        get_strategy_fills: Arc::new(GetStrategyFills::new(strategy_repo.clone(), clock.clone())),
+        get_strategy_decisions: Arc::new(GetStrategyDecisions::new(strategy_repo, clock)),
     };
     build_router(state).merge(openapi_router(false))
 }
@@ -339,6 +377,23 @@ async fn strategy_endpoints(ctx: &TestCtx) {
     assert_eq!(resp.status(), 200, "strategy fills");
     let body: serde_json::Value = resp.json().await.unwrap();
     assert!(body.as_array().expect("array").is_empty());
+
+    // Decisions series with the LEFT JOIN LATERAL market context.
+    let resp = get(
+        ctx,
+        &format!(
+            "/api/v1/monitoring/strategies/{STRATEGY_ID}/decisions\
+             ?from=2026-06-01T00:00:00Z&to=2026-06-01T03:00:00Z"
+        ),
+    )
+    .await;
+    assert_eq!(resp.status(), 200, "strategy decisions");
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let arr = body.as_array().expect("array");
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["reason"], "rsi_oversold");
+    assert_eq!(arr[0]["session_id"], SESSION_ID);
+    assert_eq!(arr[0]["market_context"]["rsi"], 28.0);
 }
 
 async fn health_and_auth(ctx: &TestCtx) {

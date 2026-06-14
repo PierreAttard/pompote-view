@@ -12,4 +12,4 @@ pub use candle_repository::{CandleQuery, CandleRepository, RepositoryError};
 pub use clock::Clock;
 pub use health::{HealthCheckError, HealthChecker};
 pub use order_repository::{OrderQuery, OrderRepository};
-pub use strategy_repository::{StrategyFillQuery, StrategyRepository};
+pub use strategy_repository::{StrategyRepository, StrategyWindowQuery};

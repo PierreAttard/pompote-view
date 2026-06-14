@@ -865,6 +865,116 @@
         ]
       }
     },
+    "/api/v1/monitoring/strategies/{id}/decisions": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Handler for `GET /api/v1/monitoring/strategies/{id}/decisions`.",
+        "operationId": "get_strategy_decisions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Strategy identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive lower bound on the wall-clock window (RFC3339).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive upper bound on the wall-clock window (RFC3339). Defaults to `Clock::now()`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Row cap (defaults to [`MAX_ORDER_ROWS`], rejected above it).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live decisions (with market context) for the strategy on the window, ordered by ascending `created_at`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LiveDecisionDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid range or limit out of bounds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` header."
+          },
+          "500": {
+            "description": "Unexpected internal error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Datastore temporarily unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "x_api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/monitoring/strategies/{id}/fills": {
       "get": {
         "tags": [
@@ -886,7 +996,7 @@
           {
             "name": "from",
             "in": "query",
-            "description": "Inclusive lower bound on `executed_at` (RFC3339).",
+            "description": "Inclusive lower bound on the wall-clock window (RFC3339).",
             "required": true,
             "schema": {
               "type": "string",
@@ -896,7 +1006,7 @@
           {
             "name": "to",
             "in": "query",
-            "description": "Exclusive upper bound on `executed_at` (RFC3339). Defaults to `Clock::now()`.",
+            "description": "Exclusive upper bound on the wall-clock window (RFC3339). Defaults to `Clock::now()`.",
             "required": false,
             "schema": {
               "type": [
@@ -1606,6 +1716,50 @@
             "type": "string",
             "description": "`buy` or `sell`.",
             "example": "sell"
+          }
+        }
+      },
+      "LiveDecisionDto": {
+        "type": "object",
+        "description": "A live decision with its optional market-context snapshot.",
+        "required": [
+          "decision_id",
+          "session_id",
+          "created_at",
+          "reason",
+          "orders_count"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Wall-clock time the decision was recorded (RFC3339)."
+          },
+          "decision_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Primary key."
+          },
+          "market_context": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Opaque market-context snapshot (field omitted when none was recorded)."
+          },
+          "orders_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of orders emitted by this decision."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Free-text rationale recorded by the strategy engine."
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Owning trading session."
           }
         }
       },
