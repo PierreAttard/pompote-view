@@ -29,6 +29,11 @@ export function isRangePreset(value: string | null | undefined): value is RangeP
 	return value === '1h' || value === '6h' || value === '24h' || value === '7d';
 }
 
+/** Duration of a preset window in milliseconds. */
+export function presetMs(preset: RangePreset): number {
+	return PRESET_MS[preset];
+}
+
 /**
  * Computes the `[from, to)` window (RFC3339) for a preset relative to `now`.
  * `to` is `now`; `from` is `now - preset`.
