@@ -156,3 +156,44 @@ test('clicking a decision bar opens the detail panel; Escape closes it', async (
 	await page.keyboard.press('Escape');
 	await expect(page.getByTestId('decision-panel')).toHaveCount(0);
 });
+
+test('indicator toggles enable a sub-chart from decision snapshots', async ({ page }) => {
+	const DECISIONS = [
+		{
+			decision_id: 'd0',
+			session_id: 's1',
+			created_at: CANDLES[0].ts,
+			reason: 'd0',
+			orders_count: 0,
+			market_context: { rsi: 28, adx: 30 }
+		}
+	];
+
+	await page.route('**/api/candles**', (route) =>
+		route.fulfill({ json: CANDLES, headers: { 'content-type': 'application/json' } })
+	);
+	await page.route('**/api/strategies/*/orders**', (route) =>
+		route.fulfill({ json: [], headers: { 'content-type': 'application/json' } })
+	);
+	await page.route('**/api/strategies/*/decisions**', (route) =>
+		route.fulfill({ json: DECISIONS, headers: { 'content-type': 'application/json' } })
+	);
+
+	await page.goto('/live?strategy=smoke&exchange=binance&symbol=BTCUSDT&timeframe=1h&preset=24h');
+
+	const selectors = page.getByTestId('live-selectors');
+	if (!(await selectors.isVisible().catch(() => false))) {
+		test.skip(true, 'viz backend not reachable — live selectors did not load');
+	}
+
+	await expect(page.getByTestId('chart').locator('canvas').first()).toBeVisible();
+
+	// Toggles are built generically from the snapshot's numeric fields (#24).
+	await expect(page.getByTestId('live-indicator-toggles')).toBeVisible();
+	const rsi = page.getByRole('button', { name: /rsi/i });
+	await expect(rsi).toHaveAttribute('aria-pressed', 'false');
+	await rsi.click();
+	await expect(rsi).toHaveAttribute('aria-pressed', 'true');
+	// The chart keeps rendering with the extra pane.
+	await expect(page.getByTestId('chart').locator('canvas').first()).toBeVisible();
+});

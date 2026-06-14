@@ -62,6 +62,38 @@ describe('Chart.svelte', () => {
 		await expect.poll(() => chart.element().querySelectorAll('canvas').length).toBeGreaterThan(0);
 	});
 
+	it('renders indicator sub-charts in their own panes without throwing', async () => {
+		render(Chart, {
+			candles: candles(),
+			subcharts: [
+				{
+					id: 'rsi',
+					color: '#3b82f6',
+					title: 'RSI',
+					data: [
+						{ ts: '2026-06-01T00:00:00Z', value: 28 },
+						{ ts: '2026-06-01T01:00:00Z', value: 35 },
+						{ ts: '2026-06-01T02:00:00Z', value: 41 }
+					]
+				},
+				{
+					id: 'adx',
+					color: '#f59e0b',
+					title: 'ADX',
+					data: [
+						{ ts: '2026-06-01T00:00:00Z', value: 20 },
+						{ ts: '2026-06-01T01:00:00Z', value: 22 },
+						{ ts: '2026-06-01T02:00:00Z', value: 25 }
+					]
+				}
+			],
+			dark: true
+		});
+		const chart = page.getByTestId('chart');
+		await expect.element(chart).toBeInTheDocument();
+		await expect.poll(() => chart.element().querySelectorAll('canvas').length).toBeGreaterThan(0);
+	});
+
 	it('cleans up the chart DOM on unmount (no leak)', async () => {
 		const { unmount } = render(Chart, { candles: candles() });
 		const container = page.getByTestId('chart').element();
