@@ -3,6 +3,7 @@ import {
 	BackendError,
 	getBacktestRun,
 	getBacktestRunCandles,
+	getCandles,
 	listBacktestRuns,
 	type BackendConfig
 } from './backend';
@@ -67,6 +68,57 @@ describe('listBacktestRuns', () => {
 		await expect(
 			listBacktestRuns(fetch as unknown as typeof globalThis.fetch, config)
 		).rejects.toMatchObject({ status: 502 });
+	});
+});
+
+describe('getCandles', () => {
+	it('forwards the locators + window and parses the body', async () => {
+		const fetch = vi
+			.fn()
+			.mockResolvedValue(
+				jsonResponse([{ ts: '2026-06-01T00:00:00Z', o: 1, h: 2, l: 0.5, c: 1.5, v: 10 }])
+			);
+
+		const candles = await getCandles(fetch as unknown as typeof globalThis.fetch, config, {
+			exchange: 'binance',
+			symbol: 'BTCUSDT',
+			timeframe: '1h',
+			from: '2026-06-01T00:00:00Z',
+			to: '2026-06-02T00:00:00Z'
+		});
+
+		expect(candles).toHaveLength(1);
+		const [url, init] = fetch.mock.calls[0];
+		expect((url as URL).pathname).toBe('/api/v1/monitoring/candles');
+		expect((url as URL).searchParams.get('exchange')).toBe('binance');
+		expect((url as URL).searchParams.get('symbol')).toBe('BTCUSDT');
+		expect((url as URL).searchParams.get('timeframe')).toBe('1h');
+		expect((url as URL).searchParams.get('from')).toBe('2026-06-01T00:00:00Z');
+		expect((url as URL).searchParams.get('to')).toBe('2026-06-02T00:00:00Z');
+		expect((init as RequestInit).headers).toEqual({ 'X-API-Key': 'test-key' });
+	});
+
+	it('omits `to` when not provided', async () => {
+		const fetch = vi.fn().mockResolvedValue(jsonResponse([]));
+		await getCandles(fetch as unknown as typeof globalThis.fetch, config, {
+			exchange: 'binance',
+			symbol: 'BTCUSDT',
+			timeframe: '1h',
+			from: '2026-06-01T00:00:00Z'
+		});
+		expect((fetch.mock.calls[0][0] as URL).searchParams.has('to')).toBe(false);
+	});
+
+	it('maps a 400 (bad timeframe/range) to BackendError with its status', async () => {
+		const fetch = vi.fn().mockResolvedValue(jsonResponse({ error: 'invalid_timeframe' }, 400));
+		const err = await getCandles(fetch as unknown as typeof globalThis.fetch, config, {
+			exchange: 'binance',
+			symbol: 'BTCUSDT',
+			timeframe: 'bogus',
+			from: '2026-06-01T00:00:00Z'
+		}).catch((e) => e);
+		expect(err).toBeInstanceOf(BackendError);
+		expect(err.status).toBe(400);
 	});
 });
 

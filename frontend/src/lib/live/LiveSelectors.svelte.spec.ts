@@ -15,6 +15,7 @@ function props(overrides = {}) {
 		timeframes: ['5s', '1m', '1h'],
 		mode: 'all' as const,
 		strategyId: '',
+		exchange: 'binance',
 		symbol: '',
 		timeframe: '1h',
 		preset: '24h' as const,
@@ -24,13 +25,21 @@ function props(overrides = {}) {
 }
 
 describe('LiveSelectors.svelte', () => {
-	it('renders all four selectors plus the mode filter', async () => {
+	it('renders all selectors plus the mode filter', async () => {
 		render(LiveSelectors, props());
 		await expect.element(page.getByTestId('select-mode')).toBeInTheDocument();
 		await expect.element(page.getByTestId('select-strategy')).toBeInTheDocument();
+		await expect.element(page.getByTestId('select-exchange')).toBeInTheDocument();
 		await expect.element(page.getByTestId('input-symbol')).toBeInTheDocument();
 		await expect.element(page.getByTestId('select-timeframe')).toBeInTheDocument();
 		await expect.element(page.getByTestId('preset-24h')).toBeInTheDocument();
+	});
+
+	it('reports an exchange change through onChange', async () => {
+		const onChange = vi.fn();
+		render(LiveSelectors, props({ onChange }));
+		await page.getByTestId('select-exchange').selectOptions('kraken');
+		expect(onChange).toHaveBeenCalledWith('exchange', 'kraken');
 	});
 
 	it('filters the strategy list to live-enabled when mode=live', async () => {

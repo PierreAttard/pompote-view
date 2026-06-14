@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Strategy } from '$lib/api/types';
+	import { EXCHANGES } from './exchanges';
 	import { RANGE_PRESETS, type RangePreset } from './range';
 
 	/** Trading-mode filter applied to the strategy list. */
@@ -10,6 +11,7 @@
 		timeframes: string[];
 		mode: ModeFilter;
 		strategyId: string;
+		exchange: string;
 		symbol: string;
 		timeframe: string;
 		preset: RangePreset;
@@ -17,8 +19,17 @@
 		onChange: (key: string, value: string | null) => void;
 	}
 
-	let { strategies, timeframes, mode, strategyId, symbol, timeframe, preset, onChange }: Props =
-		$props();
+	let {
+		strategies,
+		timeframes,
+		mode,
+		strategyId,
+		exchange,
+		symbol,
+		timeframe,
+		preset,
+		onChange
+	}: Props = $props();
 
 	// Strategies are filtered by the paper/live mode so the user only picks a
 	// strategy actually enabled for the mode they are monitoring.
@@ -59,6 +70,20 @@
 			<option value="">— Choisir —</option>
 			{#each visibleStrategies as s (s.id)}
 				<option value={s.id}>{s.name} ({s.kind})</option>
+			{/each}
+		</select>
+	</label>
+
+	<label class="flex flex-col gap-1 text-sm">
+		<span class="text-xs text-slate-400">Exchange</span>
+		<select
+			class="rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+			value={exchange}
+			data-testid="select-exchange"
+			onchange={(e) => onChange('exchange', e.currentTarget.value)}
+		>
+			{#each EXCHANGES as ex (ex)}
+				<option value={ex}>{ex}</option>
 			{/each}
 		</select>
 	</label>

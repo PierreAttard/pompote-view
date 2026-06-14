@@ -2,6 +2,8 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { DEFAULT_EXCHANGE, isExchange } from '$lib/live/exchanges';
+	import LiveChart from '$lib/live/LiveChart.svelte';
 	import LiveSelectors, { type ModeFilter } from '$lib/live/LiveSelectors.svelte';
 	import { isRangePreset, presetWindow, type RangePreset } from '$lib/live/range';
 	import { nextQuery } from '$lib/live/url';
@@ -14,6 +16,9 @@
 	const params = $derived(page.url.searchParams);
 	const mode = $derived((params.get('mode') ?? 'all') as ModeFilter);
 	const strategyId = $derived(params.get('strategy') ?? '');
+	const exchange = $derived(
+		isExchange(params.get('exchange')) ? params.get('exchange')! : DEFAULT_EXCHANGE
+	);
 	const symbol = $derived(params.get('symbol') ?? '');
 	const timeframe = $derived(params.get('timeframe') ?? data.timeframes[0] ?? '1h');
 	const preset = $derived<RangePreset>(
@@ -67,6 +72,7 @@
 			timeframes={data.timeframes}
 			{mode}
 			{strategyId}
+			{exchange}
 			{symbol}
 			{timeframe}
 			{preset}
@@ -74,25 +80,24 @@
 		/>
 	</div>
 
-	<!-- Chart zone. The OHLC chart (reusing $lib/chart) + live markers/overlays
-	     + 10s polling plug in here from #18 onwards. -->
-	<div
-		class="flex min-h-[280px] items-center justify-center rounded-md border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center text-sm"
-		data-testid="live-chart-placeholder"
-	>
-		{#if ready}
-			<div class="text-slate-400">
-				<p class="font-medium text-slate-300">
-					{selectedStrategy?.name ?? strategyId} · {symbol} · {timeframe}
-				</p>
-				<p class="mt-1 font-mono text-xs">{window.from} → {window.to}</p>
-				<p class="mt-2">Le chart live (candles + markers + polling 10s) arrive en #18.</p>
-			</div>
-		{:else}
+	<!-- Chart zone. Decision markers/overlays + 10s polling plug into LiveChart
+	     in later lots; #18 wires the candles fetch + native zoom/pan. -->
+	{#if ready}
+		<div data-testid="live-chart-header" class="text-sm text-slate-300">
+			<span class="font-medium">{selectedStrategy?.name ?? strategyId}</span>
+			<span class="text-slate-500"> · {exchange} · {symbol} · {timeframe}</span>
+			<span class="ml-1 font-mono text-xs text-slate-500">{window.from} → {window.to}</span>
+		</div>
+		<LiveChart {exchange} {symbol} {timeframe} from={window.from} to={window.to} />
+	{:else}
+		<div
+			class="flex min-h-[280px] items-center justify-center rounded-md border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center text-sm"
+			data-testid="live-chart-placeholder"
+		>
 			<p class="max-w-md text-slate-400">
 				Choisis une <strong>stratégie</strong> et saisis un <strong>symbole</strong> pour afficher le
 				graphique.
 			</p>
-		{/if}
-	</div>
+		</div>
+	{/if}
 </section>

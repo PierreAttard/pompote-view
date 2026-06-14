@@ -17,6 +17,7 @@ import type {
 	BacktestOrder,
 	BacktestRunDetail,
 	BacktestRunSummary,
+	Candle,
 	Decision,
 	LiveDecision,
 	LiveFill,
@@ -29,6 +30,7 @@ export type {
 	BacktestOrder,
 	BacktestRunDetail,
 	BacktestRunSummary,
+	Candle,
 	Decision,
 	LiveDecision,
 	LiveFill,
@@ -158,6 +160,37 @@ export async function getBacktestRunMetrics(
 		`${trimBase(config)}/api/v1/monitoring/backtests/${encodeURIComponent(runId)}/metrics`
 	);
 	return backendGet<BacktestMetrics>(fetch, config, url);
+}
+
+/** Required `[from, to)` window + locators for the live candles query. */
+export interface CandlesQuery {
+	exchange: string;
+	symbol: string;
+	timeframe: string;
+	/** Inclusive lower bound on `open_time` (RFC3339). */
+	from: string;
+	/** Exclusive upper bound (RFC3339). Omit to let the backend default to now. */
+	to?: string;
+}
+
+/**
+ * Fetches the live OHLCV candles for `[from, to)`, ordered by ascending `ts`.
+ *
+ * The backend caps the response at 5000 buckets and rejects unknown timeframes
+ * (HTTP 400, mapped to a `BackendError`); callers surface that to the user.
+ */
+export async function getCandles(
+	fetch: typeof globalThis.fetch,
+	config: BackendConfig,
+	query: CandlesQuery
+): Promise<Candle[]> {
+	const url = new URL(`${trimBase(config)}/api/v1/monitoring/candles`);
+	url.searchParams.set('exchange', query.exchange);
+	url.searchParams.set('symbol', query.symbol);
+	url.searchParams.set('timeframe', query.timeframe);
+	url.searchParams.set('from', query.from);
+	if (query.to) url.searchParams.set('to', query.to);
+	return backendGet<Candle[]>(fetch, config, url);
 }
 
 /** Fetches every strategy (the live selector), with paper/live mode flags. */
