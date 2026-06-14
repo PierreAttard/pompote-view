@@ -4,12 +4,11 @@
 		createChart,
 		CandlestickSeries,
 		ColorType,
-		type CandlestickData,
 		type IChartApi,
-		type ISeriesApi,
-		type UTCTimestamp
+		type ISeriesApi
 	} from 'lightweight-charts';
 	import type { Candle } from '$lib/api/types';
+	import { toSeriesData } from './candles';
 
 	interface Props {
 		/**
@@ -27,27 +26,29 @@
 	let container: HTMLDivElement;
 	let chart: IChartApi | undefined;
 	let series: ISeriesApi<'Candlestick'> | undefined;
-
-	/**
-	 * Lightweight Charts wants strictly ascending, de-duplicated timestamps in
-	 * seconds. The API returns RFC3339 strings on `ts`, so we parse, sort, and
-	 * drop duplicate buckets (keeping the last one) before handing data over.
-	 */
-	function toSeriesData(input: Candle[]): CandlestickData[] {
-		const points: CandlestickData[] = [];
-		for (const c of input) {
-			const time = Math.floor(Date.parse(c.ts) / 1000);
-			if (Number.isNaN(time)) continue;
-			points.push({ time: time as UTCTimestamp, open: c.o, high: c.h, low: c.l, close: c.c });
-		}
-		points.sort((a, b) => (a.time as number) - (b.time as number));
-		// Drop duplicate buckets, keeping the last occurrence for each timestamp.
-		return points.filter((p, i) => i === points.length - 1 || p.time !== points[i + 1].time);
-	}
+	// Fit the viewport only on the first load; later updates (e.g. live polling
+	// in #18) must not clobber the user's zoom/pan.
+	let fitted = false;
 
 	function isDark(): boolean {
 		if (dark !== undefined) return dark;
 		return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true;
+	}
+
+	/**
+	 * Push candles into the series. Called from both `onMount` (initial load,
+	 * guaranteed to have the series) and the `$effect` (later changes); the
+	 * extra call is idempotent, which keeps us correct regardless of the
+	 * mount/effect ordering. The viewport is fitted only once.
+	 */
+	function render(input: Candle[]): void {
+		if (!series) return;
+		const data = toSeriesData(input);
+		series.setData(data);
+		if (!fitted && data.length > 0) {
+			chart?.timeScale().fitContent();
+			fitted = true;
+		}
 	}
 
 	onMount(() => {
@@ -69,8 +70,7 @@
 		});
 
 		series = chart.addSeries(CandlestickSeries);
-		series.setData(toSeriesData(candles));
-		chart.timeScale().fitContent();
+		render(candles);
 
 		// Disposing the chart tears down its ResizeObserver and DOM nodes, so
 		// repeated mount/unmount cycles do not leak.
@@ -78,16 +78,13 @@
 			chart?.remove();
 			chart = undefined;
 			series = undefined;
+			fitted = false;
 		};
 	});
 
-	// React to candle changes after the initial mount.
+	// Re-render whenever `candles` changes (no-op until the series exists).
 	$effect(() => {
-		const data = toSeriesData(candles);
-		if (series) {
-			series.setData(data);
-			chart?.timeScale().fitContent();
-		}
+		render(candles);
 	});
 </script>
 

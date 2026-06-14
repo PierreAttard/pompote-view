@@ -31,6 +31,6 @@ describe('Chart.svelte', () => {
 		const container = page.getByTestId('chart').element();
 		await expect.poll(() => container.querySelectorAll('canvas').length).toBeGreaterThan(0);
 		unmount();
-		expect(container.querySelectorAll('canvas').length).toBe(0);
+		await expect.poll(() => container.querySelectorAll('canvas').length).toBe(0);
 	});
 });
