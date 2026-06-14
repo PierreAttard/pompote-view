@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { createQuery } from '@tanstack/svelte-query';
-	import type { LiveDecision } from '$lib/api/types';
+	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+	import type { Candle, LiveDecision } from '$lib/api/types';
 	import Chart, { type HoverInfo } from '$lib/chart/Chart.svelte';
 	import IndicatorToggles from '$lib/chart/IndicatorToggles.svelte';
 	import {
@@ -16,7 +16,13 @@
 		ordersToMarkers,
 		type AnnotationParams
 	} from './annotations';
-	import { candlesQueryKey, fetchCandles, type CandlesParams } from './candles';
+	import {
+		candlesQueryKey,
+		fetchCandles,
+		mergeCandles,
+		POLL_INTERVAL_MS,
+		type CandlesParams
+	} from './candles';
 	import DecisionPanel from './DecisionPanel.svelte';
 	import DecisionTooltip from './DecisionTooltip.svelte';
 	import { timeframeSeconds } from './depth';
@@ -34,24 +40,45 @@
 	const params = $derived<CandlesParams>({ exchange, symbol, timeframe, from, to });
 	const annotationParams = $derived<AnnotationParams>({ strategyId, from, to });
 
-	// Candles drive the chart's loading/error/empty/chart states. The query key is
-	// derived from the params, so changing any selector refetches.
+	const queryClient = useQueryClient();
+	// Upper bound for live fetches: always "now", so each poll picks up candles /
+	// orders created since the window opened. The query keys keep the original
+	// (stable) `to`, so polling refetches in place without remounting the chart.
+	const nowIso = () => new Date().toISOString();
+
+	// Live polling (#26): refetch every 10s. The query key stays stable across
+	// polls, so the chart is NOT remounted — it grows in place (zoom/pan kept).
+	// TanStack pauses background refetches when the tab is hidden
+	// (`refetchIntervalInBackground` defaults to false), satisfying the
+	// "pause when hidden" requirement.
 	const candlesQuery = createQuery(() => ({
 		queryKey: candlesQueryKey(params),
-		queryFn: () => fetchCandles(params)
+		queryFn: async () => {
+			// Incremental: fetch only `[lastTs, now]` and merge into the accumulated
+			// candles, so each poll transfers just the tail (not the whole window).
+			const prev = queryClient.getQueryData<Candle[]>(candlesQueryKey(params)) ?? [];
+			const from = prev.length > 0 ? prev[prev.length - 1].ts : params.from;
+			const fresh = await fetchCandles({ ...params, from, to: nowIso() });
+			return mergeCandles(prev, fresh);
+		},
+		refetchInterval: POLL_INTERVAL_MS
 	}));
 
 	// Orders (buy/sell markers) and decisions (reason + snapshot) are best-effort
-	// annotations: if they fail the chart still renders, just without markers.
+	// annotations: if they fail the chart still renders, just without markers. They
+	// poll too (open `to`) so new markers appear in the same cycle; the payload is
+	// small, so we refetch the window rather than merge incrementally.
 	const ordersQuery = createQuery(() => ({
 		queryKey: ordersQueryKey(annotationParams),
-		queryFn: () => fetchOrders(annotationParams),
-		enabled: strategyId !== ''
+		queryFn: () => fetchOrders({ ...annotationParams, to: nowIso() }),
+		enabled: strategyId !== '',
+		refetchInterval: POLL_INTERVAL_MS
 	}));
 	const decisionsQuery = createQuery(() => ({
 		queryKey: decisionsQueryKey(annotationParams),
-		queryFn: () => fetchDecisions(annotationParams),
-		enabled: strategyId !== ''
+		queryFn: () => fetchDecisions({ ...annotationParams, to: nowIso() }),
+		enabled: strategyId !== '',
+		refetchInterval: POLL_INTERVAL_MS
 	}));
 
 	const candles = $derived(candlesQuery.data ?? []);
@@ -79,8 +106,9 @@
 	// decision is selected — then cached per window and reused across decisions.
 	const fillsQuery = createQuery(() => ({
 		queryKey: fillsQueryKey(annotationParams),
-		queryFn: () => fetchFills(annotationParams),
-		enabled: strategyId !== '' && selected !== null
+		queryFn: () => fetchFills({ ...annotationParams, to: nowIso() }),
+		enabled: strategyId !== '' && selected !== null,
+		refetchInterval: POLL_INTERVAL_MS
 	}));
 	const fills = $derived(fillsQuery.data ?? []);
 
@@ -153,9 +181,12 @@
 		<div
 			class="relative min-h-[280px] flex-1 overflow-hidden rounded-md border border-slate-800 bg-slate-900/60"
 			data-testid="live-chart"
+			data-candle-count={candles.length}
 			bind:clientWidth={containerWidth}
 		>
-			{#if candlesQuery.isError}
+			<!-- Only surface the error state on the *initial* load (no data yet); a
+			     transient poll failure must not replace a working chart (#26). -->
+			{#if candlesQuery.isError && candles.length === 0}
 				<div
 					class="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 p-6 text-center"
 					data-testid="live-chart-error"

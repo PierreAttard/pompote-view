@@ -1,5 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
-import { candlesPath, candlesQueryKey, fetchCandles, type CandlesParams } from './candles';
+import type { Candle } from '$lib/api/types';
+import {
+	candlesPath,
+	candlesQueryKey,
+	fetchCandles,
+	mergeCandles,
+	type CandlesParams
+} from './candles';
+
+function candle(ts: string, close: number): Candle {
+	return { ts, o: close, h: close, l: close, c: close, v: 1 };
+}
 
 const params: CandlesParams = {
 	exchange: 'binance',
@@ -51,5 +62,50 @@ describe('fetchCandles', () => {
 		await expect(fetchCandles(params, fetchFn as unknown as typeof fetch)).rejects.toMatchObject({
 			status: 400
 		});
+	});
+});
+
+describe('mergeCandles', () => {
+	it('returns the other side when one is empty', () => {
+		const prev = [candle('2026-06-01T00:00:00Z', 1)];
+		expect(mergeCandles(prev, [])).toBe(prev);
+		expect(mergeCandles([], prev)).toEqual(prev);
+	});
+
+	it('appends new candles and updates the boundary (in-progress) bucket', () => {
+		const prev = [
+			candle('2026-06-01T00:00:00Z', 1),
+			candle('2026-06-01T01:00:00Z', 2) // in-progress; fresh re-sends it updated
+		];
+		const fresh = [
+			candle('2026-06-01T01:00:00Z', 9), // same ts, updated close
+			candle('2026-06-01T02:00:00Z', 3) // new bar
+		];
+		expect(mergeCandles(prev, fresh)).toEqual([
+			candle('2026-06-01T00:00:00Z', 1),
+			candle('2026-06-01T01:00:00Z', 9),
+			candle('2026-06-01T02:00:00Z', 3)
+		]);
+	});
+
+	it('keeps immutable history before the boundary', () => {
+		const prev = [candle('2026-06-01T00:00:00Z', 1), candle('2026-06-01T01:00:00Z', 2)];
+		const fresh = [candle('2026-06-01T02:00:00Z', 3)];
+		expect(mergeCandles(prev, fresh).map((c) => c.ts)).toEqual([
+			'2026-06-01T00:00:00Z',
+			'2026-06-01T01:00:00Z',
+			'2026-06-01T02:00:00Z'
+		]);
+	});
+
+	it('bounds growth to the cap, keeping the most recent candles', () => {
+		const prev = Array.from({ length: 5000 }, (_, i) =>
+			candle(new Date(Date.UTC(2026, 0, 1) + i * 60_000).toISOString(), i)
+		);
+		const fresh = [candle(new Date(Date.UTC(2026, 0, 1) + 5000 * 60_000).toISOString(), 5000)];
+		const merged = mergeCandles(prev, fresh);
+		expect(merged).toHaveLength(5000);
+		expect(merged.at(-1)?.c).toBe(5000); // newest kept
+		expect(merged[0].c).toBe(1); // oldest dropped
 	});
 });
