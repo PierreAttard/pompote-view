@@ -75,3 +75,32 @@ test('an over-cap (timeframe, range) shows the depth warning and fires no candle
 	await page.waitForTimeout(300);
 	expect(candlesCalled).toBe(false);
 });
+
+test('the live chart fetches decision annotations (orders + decisions)', async ({ page }) => {
+	await page.route('**/api/candles**', (route) =>
+		route.fulfill({ json: CANDLES, headers: { 'content-type': 'application/json' } })
+	);
+	await page.route('**/api/strategies/*/orders**', (route) =>
+		route.fulfill({ json: [], headers: { 'content-type': 'application/json' } })
+	);
+	await page.route('**/api/strategies/*/decisions**', (route) =>
+		route.fulfill({ json: [], headers: { 'content-type': 'application/json' } })
+	);
+
+	const ordersRequest = page.waitForRequest((r) => /\/api\/strategies\/.+\/orders/.test(r.url()));
+	const decisionsRequest = page.waitForRequest((r) =>
+		/\/api\/strategies\/.+\/decisions/.test(r.url())
+	);
+
+	await page.goto('/live?strategy=smoke&exchange=binance&symbol=BTCUSDT&timeframe=1h&preset=24h');
+
+	const selectors = page.getByTestId('live-selectors');
+	if (!(await selectors.isVisible().catch(() => false))) {
+		test.skip(true, 'viz backend not reachable — live selectors did not load');
+	}
+
+	await expect(page.getByTestId('live-chart')).toBeVisible();
+	// The annotation queries fire so markers + decision tooltips have their data.
+	await ordersRequest;
+	await decisionsRequest;
+});
