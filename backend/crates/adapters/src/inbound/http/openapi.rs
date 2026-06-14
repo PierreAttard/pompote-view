@@ -43,6 +43,7 @@ use super::{backtests, candles, orders};
         backtests::get_backtest_fills,
         backtests::get_backtest_decisions,
         backtests::get_backtest_candles,
+        backtests::get_backtest_metrics,
     ),
     components(
         schemas(
@@ -56,6 +57,7 @@ use super::{backtests, candles, orders};
             backtests::FillDto,
             backtests::DecisionDto,
             backtests::BacktestCandlesDto,
+            backtests::BacktestMetricsDto,
             backtests::BacktestErrorBody,
         )
     ),

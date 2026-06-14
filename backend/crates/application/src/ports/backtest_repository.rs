@@ -12,7 +12,9 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use domain::backtest::{BacktestOrder, BacktestRun, BacktestRunDetail, BacktestStatus};
+use domain::backtest::{
+    BacktestOrder, BacktestRun, BacktestRunDetail, BacktestStatus, FillAggregate,
+};
 use domain::decision::Decision;
 use domain::fill::Fill;
 use uuid::Uuid;
@@ -90,4 +92,12 @@ pub trait BacktestRepository: Send + Sync {
         &self,
         query: &BacktestSeriesQuery,
     ) -> Result<Vec<Decision>, RepositoryError>;
+
+    /// Aggregates the run's fills with the `GROUP BY side` recipe (one row per
+    /// side present). Bounded to at most two rows by construction, so it takes
+    /// no `[from, to)` window or limit. Backs the run metrics use case.
+    async fn fetch_fill_aggregates(
+        &self,
+        run_id: Uuid,
+    ) -> Result<Vec<FillAggregate>, RepositoryError>;
 }

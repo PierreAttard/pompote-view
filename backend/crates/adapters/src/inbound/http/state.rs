@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use application::use_cases::{
-    GetBacktestRun, GetBacktestRunCandles, GetBacktestSeries, GetCandles, GetOrders,
-    ListBacktestRuns, ReadinessProbe,
+    GetBacktestRun, GetBacktestRunCandles, GetBacktestRunMetrics, GetBacktestSeries, GetCandles,
+    GetOrders, ListBacktestRuns, ReadinessProbe,
 };
 
 /// Immutable runtime state shared by every HTTP handler.
@@ -31,6 +31,8 @@ pub struct AppState {
     pub get_backtest_series: Arc<GetBacktestSeries>,
     /// `GET /api/v1/monitoring/backtests/:run_id/candles` use case.
     pub get_backtest_candles: Arc<GetBacktestRunCandles>,
+    /// `GET /api/v1/monitoring/backtests/:run_id/metrics` use case.
+    pub get_backtest_metrics: Arc<GetBacktestRunMetrics>,
 }
 
 /// Test-only stubs shared across the HTTP module's unit tests.
@@ -53,12 +55,12 @@ pub(crate) mod test_support {
         RepositoryError,
     };
     use application::use_cases::{
-        GetBacktestRun, GetBacktestRunCandles, GetBacktestSeries, GetCandles, GetOrders,
-        ListBacktestRuns, ReadinessProbe,
+        GetBacktestRun, GetBacktestRunCandles, GetBacktestRunMetrics, GetBacktestSeries,
+        GetCandles, GetOrders, ListBacktestRuns, ReadinessProbe,
     };
     use async_trait::async_trait;
     use chrono::{DateTime, Utc};
-    use domain::backtest::{BacktestOrder, BacktestRun, BacktestRunDetail};
+    use domain::backtest::{BacktestOrder, BacktestRun, BacktestRunDetail, FillAggregate};
     use domain::candle::Candle;
     use domain::decision::Decision;
     use domain::fill::Fill;
@@ -124,6 +126,12 @@ pub(crate) mod test_support {
         ) -> Result<Vec<Decision>, RepositoryError> {
             Ok(vec![])
         }
+        async fn fetch_fill_aggregates(
+            &self,
+            _id: Uuid,
+        ) -> Result<Vec<FillAggregate>, RepositoryError> {
+            Ok(vec![])
+        }
     }
 
     struct NowClock;
@@ -133,12 +141,14 @@ pub(crate) mod test_support {
         }
     }
 
-    /// Builds the four backtest use cases over empty repositories.
+    /// Builds the five backtest use cases over empty repositories.
+    #[allow(clippy::type_complexity)] // test-only tuple of stub use cases
     pub(crate) fn stub_backtest_use_cases() -> (
         Arc<ListBacktestRuns>,
         Arc<GetBacktestRun>,
         Arc<GetBacktestSeries>,
         Arc<GetBacktestRunCandles>,
+        Arc<GetBacktestRunMetrics>,
     ) {
         let repo = Arc::new(EmptyBacktests);
         let get_candles = Arc::new(GetCandles::new(Arc::new(EmptyCandles), Arc::new(NowClock)));
@@ -146,7 +156,8 @@ pub(crate) mod test_support {
             Arc::new(ListBacktestRuns::new(repo.clone())),
             Arc::new(GetBacktestRun::new(repo.clone())),
             Arc::new(GetBacktestSeries::new(repo.clone(), Arc::new(NowClock))),
-            Arc::new(GetBacktestRunCandles::new(repo, get_candles)),
+            Arc::new(GetBacktestRunCandles::new(repo.clone(), get_candles)),
+            Arc::new(GetBacktestRunMetrics::new(repo)),
         )
     }
 
@@ -157,6 +168,7 @@ pub(crate) mod test_support {
         get_backtest_run: Arc<GetBacktestRun>,
         get_backtest_series: Arc<GetBacktestSeries>,
         get_backtest_candles: Arc<GetBacktestRunCandles>,
+        get_backtest_metrics: Arc<GetBacktestRunMetrics>,
     ) -> AppState {
         AppState {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(AlwaysOk))),
@@ -167,6 +179,7 @@ pub(crate) mod test_support {
             get_backtest_run,
             get_backtest_series,
             get_backtest_candles,
+            get_backtest_metrics,
         }
     }
 }

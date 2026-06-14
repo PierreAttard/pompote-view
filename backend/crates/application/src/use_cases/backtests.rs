@@ -18,8 +18,8 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use domain::backtest::{
-    BacktestOrder, BacktestQueryError, BacktestRun, BacktestRunDetail, BacktestStatus,
-    MAX_BACKTEST_RUNS,
+    BacktestMetrics, BacktestOrder, BacktestQueryError, BacktestRun, BacktestRunDetail,
+    BacktestStatus, MAX_BACKTEST_RUNS,
 };
 use domain::candle::{Candle, Timeframe};
 use domain::decision::Decision;
@@ -315,6 +315,47 @@ impl GetBacktestRunCandles {
     }
 }
 
+// ---------------------------------------------------------------------------
+// GetBacktestRunMetrics
+// ---------------------------------------------------------------------------
+
+/// Error of the [`GetBacktestRunMetrics`] use case.
+#[derive(Debug, thiserror::Error)]
+pub enum GetBacktestMetricsError {
+    /// No run has the requested id (mapped to HTTP `404`).
+    #[error("backtest run not found")]
+    RunNotFound,
+    /// The run lookup or aggregation failed (datastore I/O).
+    #[error(transparent)]
+    Repository(#[from] RepositoryError),
+}
+
+/// Use case: recompute a run's performance metrics from `fills_backtest`.
+///
+/// Resolves the run first (so an unknown id is a clean `404` rather than an
+/// all-zero body), then folds the per-side fill aggregates into
+/// [`BacktestMetrics`]. Read-only; the heavy lifting (the `GROUP BY side`) runs
+/// in Postgres under the connection's `statement_timeout`.
+pub struct GetBacktestRunMetrics {
+    repo: Arc<dyn BacktestRepository>,
+}
+
+impl GetBacktestRunMetrics {
+    /// Builds the use case over the given repository port.
+    pub fn new(repo: Arc<dyn BacktestRepository>) -> Self {
+        Self { repo }
+    }
+
+    /// Returns the run's metrics, or `RunNotFound` when no run has that id.
+    pub async fn run(&self, run_id: Uuid) -> Result<BacktestMetrics, GetBacktestMetricsError> {
+        if self.repo.get_run(run_id).await?.is_none() {
+            return Err(GetBacktestMetricsError::RunNotFound);
+        }
+        let aggregates = self.repo.fetch_fill_aggregates(run_id).await?;
+        Ok(BacktestMetrics::from_aggregates(&aggregates))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,6 +366,8 @@ mod tests {
     use tokio::sync::Mutex;
 
     /// Fake repository returning canned responses and capturing the last query.
+    use domain::backtest::FillAggregate;
+
     #[derive(Default)]
     struct FakeRepo {
         runs: Vec<BacktestRun>,
@@ -332,6 +375,7 @@ mod tests {
         orders: Vec<BacktestOrder>,
         fills: Vec<Fill>,
         decisions: Vec<Decision>,
+        aggregates: Vec<FillAggregate>,
         last_list: Mutex<Option<BacktestRunListQuery>>,
         last_series: Mutex<Option<BacktestSeriesQuery>>,
     }
@@ -372,6 +416,12 @@ mod tests {
             *self.last_series.lock().await = Some(query.clone());
             Ok(self.decisions.clone())
         }
+        async fn fetch_fill_aggregates(
+            &self,
+            _run_id: Uuid,
+        ) -> Result<Vec<FillAggregate>, RepositoryError> {
+            Ok(self.aggregates.clone())
+        }
     }
 
     /// Repository that always reports the datastore as unavailable.
@@ -407,6 +457,12 @@ mod tests {
             &self,
             _query: &BacktestSeriesQuery,
         ) -> Result<Vec<Decision>, RepositoryError> {
+            Err(RepositoryError::Unavailable("simulated".into()))
+        }
+        async fn fetch_fill_aggregates(
+            &self,
+            _run_id: Uuid,
+        ) -> Result<Vec<FillAggregate>, RepositoryError> {
             Err(RepositoryError::Unavailable("simulated".into()))
         }
     }
@@ -701,5 +757,54 @@ mod tests {
         let uc = candles_uc(None, vec![]);
         let err = uc.run(Uuid::nil(), Timeframe::H1).await.unwrap_err();
         assert!(matches!(err, GetBacktestCandlesError::RunNotFound));
+    }
+
+    // --- GetBacktestRunMetrics --------------------------------------------
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn metrics_run_not_found_when_absent() {
+        let uc = GetBacktestRunMetrics::new(Arc::new(FakeRepo::default()));
+        let err = uc.run(Uuid::nil()).await.unwrap_err();
+        assert!(matches!(err, GetBacktestMetricsError::RunNotFound));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn metrics_folds_aggregates_for_existing_run() {
+        let repo = Arc::new(FakeRepo {
+            detail: Some(detail()),
+            aggregates: vec![
+                FillAggregate {
+                    side: domain::order::OrderSide::Buy,
+                    fills: 1,
+                    quantity: Decimal::from(1),
+                    notional: Decimal::from(100),
+                    fees: Decimal::new(1, 1),
+                },
+                FillAggregate {
+                    side: domain::order::OrderSide::Sell,
+                    fills: 1,
+                    quantity: Decimal::from(1),
+                    notional: Decimal::from(150),
+                    fees: Decimal::new(1, 1),
+                },
+            ],
+            ..Default::default()
+        });
+        let metrics = GetBacktestRunMetrics::new(repo)
+            .run(Uuid::nil())
+            .await
+            .unwrap();
+        assert_eq!(metrics.gross_pnl, Decimal::from(50));
+        assert_eq!(metrics.net_pnl, Decimal::new(498, 1)); // 50 - 0.2
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn metrics_propagates_unavailable() {
+        let uc = GetBacktestRunMetrics::new(Arc::new(UnavailableRepo));
+        let err = uc.run(Uuid::nil()).await.unwrap_err();
+        assert!(matches!(
+            err,
+            GetBacktestMetricsError::Repository(RepositoryError::Unavailable(_))
+        ));
     }
 }

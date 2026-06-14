@@ -42,6 +42,10 @@ pub fn build_router(state: AppState) -> Router {
             "/backtests/{run_id}/candles",
             get(backtests::get_backtest_candles),
         )
+        .route(
+            "/backtests/{run_id}/metrics",
+            get(backtests::get_backtest_metrics),
+        )
         .fallback(monitoring_not_found)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -124,8 +128,13 @@ mod tests {
     }
 
     fn test_state() -> AppState {
-        let (list_backtest_runs, get_backtest_run, get_backtest_series, get_backtest_candles) =
-            super::super::state::test_support::stub_backtest_use_cases();
+        let (
+            list_backtest_runs,
+            get_backtest_run,
+            get_backtest_series,
+            get_backtest_candles,
+            get_backtest_metrics,
+        ) = super::super::state::test_support::stub_backtest_use_cases();
         AppState {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(AlwaysOk))),
             api_key: Arc::new(b"dev-key-please-change-0123".to_vec()),
@@ -138,6 +147,7 @@ mod tests {
             get_backtest_run,
             get_backtest_series,
             get_backtest_candles,
+            get_backtest_metrics,
         }
     }
 

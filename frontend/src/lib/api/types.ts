@@ -13,3 +13,4 @@ export type BacktestCandles = components['schemas']['BacktestCandlesDto'];
 export type Candle = components['schemas']['CandleDto'];
 export type BacktestOrder = components['schemas']['BacktestOrderDto'];
 export type Decision = components['schemas']['DecisionDto'];
+export type BacktestMetrics = components['schemas']['BacktestMetricsDto'];
