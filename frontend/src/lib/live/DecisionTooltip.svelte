@@ -5,9 +5,11 @@
 	interface Props {
 		/** The decision whose rationale + snapshot to display. */
 		decision: LiveDecision;
+		/** Count of *other* decisions sharing the same candle (shown as "+N"). */
+		extra?: number;
 	}
 
-	let { decision }: Props = $props();
+	let { decision, extra = 0 }: Props = $props();
 
 	// The market-context snapshot is opaque JSONB; flatten it generically.
 	const rows = $derived(flattenSnapshot(decision.market_context));
@@ -32,5 +34,11 @@
 		</dl>
 	{:else}
 		<p class="mt-2 border-t border-slate-800 pt-2 text-slate-500">Pas de snapshot d'indicateurs.</p>
+	{/if}
+
+	{#if extra > 0}
+		<p class="mt-2 text-slate-500" data-testid="decision-extra">
+			+{extra} autre{extra > 1 ? 's' : ''} décision{extra > 1 ? 's' : ''} sur cette bougie
+		</p>
 	{/if}
 </div>

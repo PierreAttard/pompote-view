@@ -56,7 +56,9 @@
 	const lookup = $derived(buildDecisionLookup(orders, decisions, timeframeSeconds(timeframe) ?? 0));
 
 	let containerWidth = $state(0);
-	let hovered = $state<{ decision: LiveDecision; x: number; y: number } | null>(null);
+	let hovered = $state<{ decision: LiveDecision; extra: number; x: number; y: number } | null>(
+		null
+	);
 
 	const TOOLTIP_WIDTH = 256; // matches DecisionTooltip's w-64
 
@@ -66,7 +68,10 @@
 			return;
 		}
 		const list = lookup.get(Number(info.time));
-		hovered = list && list.length > 0 ? { decision: list[0], x: info.x, y: info.y } : null;
+		hovered =
+			list && list.length > 0
+				? { decision: list[0], extra: list.length - 1, x: info.x, y: info.y }
+				: null;
 	}
 
 	// Flip the tooltip to the left of the cursor when it would overflow the right
@@ -132,7 +137,7 @@
 				class="pointer-events-none absolute z-10"
 				style="left: {tooltipLeft}px; top: {tooltipTop}px;"
 			>
-				<DecisionTooltip decision={hovered.decision} />
+				<DecisionTooltip decision={hovered.decision} extra={hovered.extra} />
 			</div>
 		{/if}
 	{/if}

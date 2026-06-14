@@ -40,4 +40,16 @@ describe('DecisionTooltip.svelte', () => {
 		render(DecisionTooltip, { decision: decision({ reason: '' }) });
 		await expect.element(page.getByTestId('decision-reason')).toHaveTextContent('—');
 	});
+
+	it('shows a "+N" hint when other decisions share the candle', async () => {
+		render(DecisionTooltip, { decision: decision(), extra: 2 });
+		await expect
+			.element(page.getByTestId('decision-extra'))
+			.toHaveTextContent('+2 autres décisions sur cette bougie');
+	});
+
+	it('omits the "+N" hint when it is the only decision', async () => {
+		render(DecisionTooltip, { decision: decision(), extra: 0 });
+		await expect.element(page.getByTestId('decision-extra')).not.toBeInTheDocument();
+	});
 });

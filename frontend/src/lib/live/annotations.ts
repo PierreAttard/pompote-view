@@ -43,6 +43,10 @@ export function indexDecisionsById(decisions: LiveDecision[]): Map<string, LiveD
  * for a timeframe of `timeframeSeconds`. Markers and the hover lookup are keyed
  * on this so a crosshair landing on a bar resolves to the orders in that bucket.
  * Returns `null` for an unparseable timestamp or non-positive width.
+ *
+ * Assumes the backend's `time_bucket()` uses the default epoch-aligned origin
+ * (no custom `origin`); the `floor(sec / width) * width` grid mirrors it. If
+ * `robot_rust` ever buckets from a custom origin, this alignment must follow.
  */
 export function bucketStartSeconds(ts: string, timeframeSeconds: number): number | null {
 	if (timeframeSeconds <= 0) return null;
