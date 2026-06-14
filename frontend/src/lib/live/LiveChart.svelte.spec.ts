@@ -91,6 +91,9 @@ describe('LiveChart.svelte', () => {
 		await expect.element(page.getByTestId('volume-profile')).toBeInTheDocument();
 		// Freshness indicator (#27) appears once there is a successful update.
 		await expect.element(page.getByTestId('freshness-indicator')).toBeInTheDocument();
+		// Export controls (#33) are available alongside the chart.
+		await expect.element(page.getByTestId('export-png')).toBeInTheDocument();
+		await expect.element(page.getByTestId('export-csv')).toBeInTheDocument();
 	});
 
 	it('exposes indicator toggles and reconciles sub-chart panes when toggling', async () => {
