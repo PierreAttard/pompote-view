@@ -68,6 +68,15 @@
 		onSelect
 	}: Props = $props();
 
+	/**
+	 * Snapshot of the current chart as a canvas, for PNG export (#33). Returns
+	 * `undefined` before the chart has mounted. Exposed to the parent via
+	 * `bind:this`.
+	 */
+	export function takeScreenshot(): HTMLCanvasElement | undefined {
+		return chart?.takeScreenshot();
+	}
+
 	let container: HTMLDivElement;
 	let chart: IChartApi | undefined;
 	let series: ISeriesApi<'Candlestick'> | undefined;

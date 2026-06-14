@@ -91,6 +91,28 @@ describe('LiveChart.svelte', () => {
 		await expect.element(page.getByTestId('volume-profile')).toBeInTheDocument();
 		// Freshness indicator (#27) appears once there is a successful update.
 		await expect.element(page.getByTestId('freshness-indicator')).toBeInTheDocument();
+		// Export controls (#33) are available alongside the chart.
+		await expect.element(page.getByTestId('export-png')).toBeInTheDocument();
+		await expect.element(page.getByTestId('export-csv')).toBeInTheDocument();
+	});
+
+	it('triggers the CSV and PNG exports without throwing', async () => {
+		candlesResult.current = {
+			isPending: false,
+			isError: false,
+			data: candles(),
+			refetch: vi.fn(),
+			dataUpdatedAt: Date.now()
+		};
+		render(LiveChart, props);
+		await expect
+			.poll(() => page.getByTestId('chart').element().querySelectorAll('canvas').length)
+			.toBeGreaterThan(0);
+		// Exercises exportCsv (downloadText) and exportPng (takeScreenshot →
+		// downloadCanvasPng) against the real chart; the view stays functional.
+		await page.getByTestId('export-csv').click();
+		await page.getByTestId('export-png').click();
+		await expect.element(page.getByTestId('chart')).toBeInTheDocument();
 	});
 
 	it('exposes indicator toggles and reconciles sub-chart panes when toggling', async () => {

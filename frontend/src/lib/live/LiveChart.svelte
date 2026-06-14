@@ -26,6 +26,7 @@
 	} from './candles';
 	import DecisionPanel from './DecisionPanel.svelte';
 	import DecisionTooltip from './DecisionTooltip.svelte';
+	import { candlesToCsv, decisionsToCsv, downloadCanvasPng, downloadText } from './export';
 	import FreshnessIndicator from './FreshnessIndicator.svelte';
 	import { timeframeSeconds } from './depth';
 	import { decisionsToIndicators } from './indicators';
@@ -101,6 +102,20 @@
 	let indicatorVisible = $state<Record<string, boolean>>({});
 	const enabledSubcharts = $derived(indicators.filter((ind) => indicatorVisible[ind.id]));
 
+	// Chart export (#33): the bound instance gives the PNG screenshot; the CSV is
+	// built from the already-loaded candles/decisions of the current window.
+	let chartComponent = $state<{ takeScreenshot(): HTMLCanvasElement | undefined }>();
+	function exportPng(): void {
+		const canvas = chartComponent?.takeScreenshot();
+		if (canvas) downloadCanvasPng(canvas, `chart-${symbol}-${timeframe}.png`);
+	}
+	function exportCsv(): void {
+		downloadText(`candles-${symbol}-${timeframe}.csv`, candlesToCsv(candles));
+		if (decisions.length > 0) {
+			downloadText(`decisions-${strategyId}.csv`, decisionsToCsv(decisions));
+		}
+	}
+
 	// Decision detail panel (#22). A click selects a candle bucket; we keep the
 	// bucket key + index (not the decision object) so the panel stays correct when
 	// the underlying queries refetch (live polling, #26).
@@ -174,6 +189,27 @@
 </script>
 
 <div class="space-y-2">
+	{#if candles.length > 0}
+		<!-- Export the current window (#33): PNG snapshot + CSV of candles/decisions. -->
+		<div class="flex justify-end gap-2" data-testid="live-export">
+			<button
+				type="button"
+				data-testid="export-png"
+				onclick={exportPng}
+				class="rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 transition-colors hover:bg-slate-700"
+			>
+				Export PNG
+			</button>
+			<button
+				type="button"
+				data-testid="export-csv"
+				onclick={exportCsv}
+				class="rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 transition-colors hover:bg-slate-700"
+			>
+				Export CSV
+			</button>
+		</div>
+	{/if}
 	{#if indicators.length > 0}
 		<!-- Indicator sub-chart selector (#24): toggles which snapshot indicators
 		     get their own pane below the price chart. -->
@@ -232,6 +268,7 @@
 		     the live polling to come). -->
 				{#key candlesQueryKey(params).join('|')}
 					<Chart
+						bind:this={chartComponent}
 						{candles}
 						{markers}
 						subcharts={enabledSubcharts}
