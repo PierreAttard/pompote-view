@@ -26,6 +26,14 @@
 		<ul class="mt-6 space-y-1 text-sm" data-testid="sidebar-nav">
 			<li>
 				<a
+					href={resolve('/live')}
+					class="block rounded-md px-3 py-2 text-slate-200 hover:bg-slate-800"
+				>
+					Live
+				</a>
+			</li>
+			<li>
+				<a
 					href={resolve('/backtests')}
 					class="block rounded-md px-3 py-2 text-slate-200 hover:bg-slate-800"
 				>
