@@ -49,10 +49,13 @@
 		return s === 'buy' ? 'text-emerald-400' : s === 'sell' ? 'text-rose-400' : 'text-slate-300';
 	}
 
-	// Move focus into the panel on open so keyboard users land in the dialog.
+	// Move focus into the panel on open so keyboard users land in the dialog, and
+	// restore it to the previously focused element (e.g. the chart) on close.
 	let closeButton = $state<HTMLButtonElement>();
 	$effect(() => {
+		const previouslyFocused = document.activeElement as HTMLElement | null;
 		closeButton?.focus();
+		return () => previouslyFocused?.focus?.();
 	});
 </script>
 
