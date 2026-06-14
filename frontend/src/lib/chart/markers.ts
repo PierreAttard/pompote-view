@@ -33,7 +33,8 @@ export function toSeriesMarkers(input: ChartMarker[]): SeriesMarker<UTCTimestamp
 	for (const m of input) {
 		const time = Math.floor(Date.parse(m.ts) / 1000);
 		if (Number.isNaN(time)) continue;
-		const side = m.side.toLowerCase();
+		// Defensive: API rows can contradict the `string` type at runtime.
+		const side = String(m.side ?? '').toLowerCase();
 		if (side === 'buy') {
 			markers.push({
 				time: time as UTCTimestamp,
