@@ -49,3 +49,29 @@ test('changing the timeframe refreshes the chart', async ({ page }) => {
 
 	await expect(page.getByTestId('chart').locator('canvas').first()).toBeVisible();
 });
+
+test('an over-cap (timeframe, range) shows the depth warning and fires no candles request', async ({
+	page
+}) => {
+	// Fail loudly if a candles request leaves: the over-cap selection must be
+	// caught on the UI before any backend call (issue #19).
+	let candlesCalled = false;
+	await page.route('**/api/candles**', (route) => {
+		candlesCalled = true;
+		return route.fulfill({ json: CANDLES, headers: { 'content-type': 'application/json' } });
+	});
+
+	// 7d at 1m = 10080 buckets, well over the 5000 cap.
+	await page.goto('/live?strategy=smoke&exchange=binance&symbol=BTCUSDT&timeframe=1m&preset=7d');
+
+	const selectors = page.getByTestId('live-selectors');
+	if (!(await selectors.isVisible().catch(() => false))) {
+		test.skip(true, 'viz backend not reachable — live selectors did not load');
+	}
+
+	await expect(page.getByTestId('live-depth-warning')).toBeVisible();
+	await expect(page.getByTestId('live-chart')).toHaveCount(0);
+	// Give any stray request a beat to fire before asserting none did.
+	await page.waitForTimeout(300);
+	expect(candlesCalled).toBe(false);
+});
