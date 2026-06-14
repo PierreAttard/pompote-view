@@ -8,7 +8,7 @@
  * without a component.
  */
 import { apiGet } from '$lib/api/client';
-import type { LiveDecision, Order } from '$lib/api/types';
+import type { LiveDecision, LiveFill, Order } from '$lib/api/types';
 import type { ChartMarker } from '$lib/chart/markers';
 
 /** `[from, to)` window for the annotation queries (mirrors the candle window). */
@@ -83,9 +83,26 @@ export function buildDecisionLookup(
 	return lookup;
 }
 
+/**
+ * Orders emitted by a given decision, joined on `order.decision_id`. Backs the
+ * detail panel's orders table (#22).
+ */
+export function ordersForDecision(orders: Order[], decisionId: string): Order[] {
+	return orders.filter((o) => o.decision_id === decisionId);
+}
+
+/**
+ * Fills belonging to the given orders, joined on `fill.order_id`. Used by the
+ * detail panel to list the executions of a decision's orders (#22).
+ */
+export function fillsForOrders(fills: LiveFill[], orders: Order[]): LiveFill[] {
+	const ids = new Set(orders.map((o) => o.order_id));
+	return fills.filter((f) => ids.has(f.order_id));
+}
+
 function strategyPath(
 	strategyId: string,
-	resource: 'orders' | 'decisions',
+	resource: 'orders' | 'decisions' | 'fills',
 	from: string,
 	to: string
 ) {
@@ -101,6 +118,11 @@ export function ordersQueryKey(params: AnnotationParams) {
 /** TanStack Query key for a strategy's live decisions on a window. */
 export function decisionsQueryKey(params: AnnotationParams) {
 	return ['decisions', params.strategyId, params.from, params.to];
+}
+
+/** TanStack Query key for a strategy's live fills on a window. */
+export function fillsQueryKey(params: AnnotationParams) {
+	return ['fills', params.strategyId, params.from, params.to];
 }
 
 /** Fetches the strategy's live orders via the same-origin proxy. */
@@ -121,6 +143,17 @@ export function fetchDecisions(
 ): Promise<LiveDecision[]> {
 	return apiGet<LiveDecision[]>(
 		strategyPath(params.strategyId, 'decisions', params.from, params.to),
+		fetchFn
+	);
+}
+
+/** Fetches the strategy's live fills via the same-origin proxy. */
+export function fetchFills(
+	params: AnnotationParams,
+	fetchFn: typeof fetch = fetch
+): Promise<LiveFill[]> {
+	return apiGet<LiveFill[]>(
+		strategyPath(params.strategyId, 'fills', params.from, params.to),
 		fetchFn
 	);
 }
