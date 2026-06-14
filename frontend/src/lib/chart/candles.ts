@@ -23,3 +23,17 @@ export function toSeriesData(input: Candle[]): CandlestickData[] {
 	// Drop duplicate buckets, keeping the last occurrence for each timestamp.
 	return points.filter((p, i) => i === points.length - 1 || p.time !== points[i + 1].time);
 }
+
+/**
+ * Whether `next` extends `prev` so the chart can grow with `series.update()`
+ * (re-applying the boundary bar + appending new ones) instead of a full
+ * `setData()` (#26 live polling).
+ *
+ * Safe because candle history is immutable — only the latest bar mutates and new
+ * bars append. Requires the same first bucket (same window start) and a
+ * non-shrinking length; a different start (selection change, cap-trim) falls back
+ * to `setData`.
+ */
+export function isIncrementalAppend(prev: CandlestickData[], next: CandlestickData[]): boolean {
+	return prev.length > 0 && next.length >= prev.length && next[0]?.time === prev[0]?.time;
+}

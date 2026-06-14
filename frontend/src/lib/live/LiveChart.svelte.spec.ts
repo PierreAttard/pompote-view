@@ -21,7 +21,10 @@ vi.mock('@tanstack/svelte-query', () => ({
 		if (resource === 'decisions')
 			return { isPending: false, isError: false, data: decisionsData.current, refetch: vi.fn() };
 		return { isPending: false, isError: false, data: [], refetch: vi.fn() };
-	}
+	},
+	// The candles queryFn reads prior data via the client; the mocked createQuery
+	// ignores queryFn, so a no-op client is enough for the component to mount.
+	useQueryClient: () => ({ getQueryData: () => undefined })
 }));
 
 beforeEach(() => {

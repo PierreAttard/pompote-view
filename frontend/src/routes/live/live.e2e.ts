@@ -215,3 +215,39 @@ test('the volume profile renders beside the chart with a POC', async ({ page }) 
 	await expect(page.getByTestId('volume-profile')).toBeVisible();
 	await expect(page.getByTestId('vp-poc')).toBeVisible();
 });
+
+test('polls every 10s and grows the chart with a new candle (#26)', async ({ page }) => {
+	const EXTRA = { ts: '2026-06-01T03:00:00Z', o: 102, h: 130, l: 101, c: 125, v: 9 };
+	let calls = 0;
+	const fromParams: (string | null)[] = [];
+	await page.route('**/api/candles**', (route) => {
+		fromParams.push(new URL(route.request().url()).searchParams.get('from'));
+		calls += 1;
+		// The poll returns the original window plus one fresh candle.
+		const data = calls === 1 ? CANDLES : [...CANDLES, EXTRA];
+		return route.fulfill({ json: data, headers: { 'content-type': 'application/json' } });
+	});
+	await page.route('**/api/strategies/*/orders**', (route) =>
+		route.fulfill({ json: [], headers: { 'content-type': 'application/json' } })
+	);
+	await page.route('**/api/strategies/*/decisions**', (route) =>
+		route.fulfill({ json: [], headers: { 'content-type': 'application/json' } })
+	);
+
+	await page.goto('/live?strategy=smoke&exchange=binance&symbol=BTCUSDT&timeframe=1h&preset=24h');
+
+	const selectors = page.getByTestId('live-selectors');
+	if (!(await selectors.isVisible().catch(() => false))) {
+		test.skip(true, 'viz backend not reachable — live selectors did not load');
+	}
+
+	const liveChart = page.getByTestId('live-chart');
+	await expect(liveChart).toHaveAttribute('data-candle-count', String(CANDLES.length));
+
+	// After ~10s the polling refetch fires and a new candle appears, untouched.
+	await expect(liveChart).toHaveAttribute('data-candle-count', String(CANDLES.length + 1), {
+		timeout: 15_000
+	});
+	// The poll was incremental: it asked for candles from the last known ts.
+	expect(fromParams[1]).toBe(CANDLES[CANDLES.length - 1].ts);
+});

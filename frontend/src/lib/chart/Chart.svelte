@@ -6,6 +6,7 @@
 		CandlestickSeries,
 		LineSeries,
 		ColorType,
+		type CandlestickData,
 		type IChartApi,
 		type ISeriesApi,
 		type ISeriesMarkersPluginApi,
@@ -13,7 +14,7 @@
 		type Time
 	} from 'lightweight-charts';
 	import type { Candle } from '$lib/api/types';
-	import { toSeriesData } from './candles';
+	import { isIncrementalAppend, toSeriesData } from './candles';
 	import { toSeriesMarkers, type ChartMarker } from './markers';
 	import { toLineData, type ChartOverlay } from './overlays';
 
@@ -77,9 +78,12 @@
 	// Sub-chart line series kept by id, each with the pane index it lives in, so
 	// we can add/update/move/remove them and trim emptied panes incrementally.
 	let subchartSeries: Record<string, { series: ISeriesApi<'Line'>; pane: number }> = {};
-	// Fit the viewport only on the first load; later updates (e.g. live polling
-	// in #18) must not clobber the user's zoom/pan.
+	// Fit the viewport only on the first load; later updates (live polling, #26)
+	// must not clobber the user's zoom/pan.
 	let fitted = false;
+	// Last data pushed to the candlestick series, so a poll can grow it with
+	// `update()` instead of a full `setData()`.
+	let rendered: CandlestickData[] = [];
 
 	function isDark(): boolean {
 		if (dark !== undefined) return dark;
@@ -95,11 +99,18 @@
 	function render(input: Candle[]): void {
 		if (!series) return;
 		const data = toSeriesData(input);
-		series.setData(data);
-		if (!fitted && data.length > 0) {
-			chart?.timeScale().fitContent();
-			fitted = true;
+		if (isIncrementalAppend(rendered, data)) {
+			// Live poll: re-apply the boundary bar (it may have updated) and append
+			// the new bars via `update()` rather than re-setting the whole series.
+			for (let i = rendered.length - 1; i < data.length; i++) series.update(data[i]);
+		} else {
+			series.setData(data);
+			if (!fitted && data.length > 0) {
+				chart?.timeScale().fitContent();
+				fitted = true;
+			}
 		}
+		rendered = data;
 	}
 
 	/** Replace the buy/sell markers (no-op until the series exists). */
@@ -256,6 +267,7 @@
 			markersPlugin = undefined;
 			overlaySeries = {};
 			subchartSeries = {};
+			rendered = [];
 			fitted = false;
 		};
 	});

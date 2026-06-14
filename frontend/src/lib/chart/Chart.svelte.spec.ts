@@ -94,6 +94,19 @@ describe('Chart.svelte', () => {
 		await expect.poll(() => chart.element().querySelectorAll('canvas').length).toBeGreaterThan(0);
 	});
 
+	it('grows the series incrementally on rerender without throwing (live polling)', async () => {
+		const { rerender } = render(Chart, { candles: candles(), dark: true });
+		const chart = page.getByTestId('chart');
+		await expect.poll(() => chart.element().querySelectorAll('canvas').length).toBeGreaterThan(0);
+		// Append a new bar from the same window start → exercises the update() path.
+		await rerender({
+			candles: [...candles(), { ts: '2026-06-01T03:00:00Z', o: 102, h: 130, l: 101, c: 125, v: 9 }],
+			dark: true
+		});
+		await expect.element(chart).toBeInTheDocument();
+		await expect.poll(() => chart.element().querySelectorAll('canvas').length).toBeGreaterThan(0);
+	});
+
 	it('cleans up the chart DOM on unmount (no leak)', async () => {
 		const { unmount } = render(Chart, { candles: candles() });
 		const container = page.getByTestId('chart').element();
