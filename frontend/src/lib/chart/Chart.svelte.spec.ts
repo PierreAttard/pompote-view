@@ -40,6 +40,28 @@ describe('Chart.svelte', () => {
 		await expect.poll(() => chart.element().querySelectorAll('canvas').length).toBeGreaterThan(0);
 	});
 
+	it('renders indicator overlays without throwing', async () => {
+		render(Chart, {
+			candles: candles(),
+			overlays: [
+				{
+					id: 'sma20',
+					color: '#22c55e',
+					title: 'SMA 20',
+					data: [
+						{ ts: '2026-06-01T00:00:00Z', value: 101 },
+						{ ts: '2026-06-01T01:00:00Z', value: 110 },
+						{ ts: '2026-06-01T02:00:00Z', value: 108 }
+					]
+				}
+			],
+			dark: true
+		});
+		const chart = page.getByTestId('chart');
+		await expect.element(chart).toBeInTheDocument();
+		await expect.poll(() => chart.element().querySelectorAll('canvas').length).toBeGreaterThan(0);
+	});
+
 	it('cleans up the chart DOM on unmount (no leak)', async () => {
 		const { unmount } = render(Chart, { candles: candles() });
 		const container = page.getByTestId('chart').element();

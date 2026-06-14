@@ -4,6 +4,7 @@
 		createChart,
 		createSeriesMarkers,
 		CandlestickSeries,
+		LineSeries,
 		ColorType,
 		type IChartApi,
 		type ISeriesApi,
@@ -13,6 +14,7 @@
 	import type { Candle } from '$lib/api/types';
 	import { toSeriesData } from './candles';
 	import { toSeriesMarkers, type ChartMarker } from './markers';
+	import { toLineData, type ChartOverlay } from './overlays';
 
 	interface Props {
 		/**
@@ -23,16 +25,21 @@
 		candles?: Candle[];
 		/** Buy/sell annotations placed at each decision/order timestamp. */
 		markers?: ChartMarker[];
+		/** Indicator lines (SMA/EMA/Bollinger…) drawn over the price series. */
+		overlays?: ChartOverlay[];
 		/** Override the system colour-scheme preference (mostly for tests). */
 		dark?: boolean;
 	}
 
-	let { candles = [], markers = [], dark }: Props = $props();
+	let { candles = [], markers = [], overlays = [], dark }: Props = $props();
 
 	let container: HTMLDivElement;
 	let chart: IChartApi | undefined;
 	let series: ISeriesApi<'Candlestick'> | undefined;
 	let markersPlugin: ISeriesMarkersPluginApi<Time> | undefined;
+	// Overlay line series kept by id so we can add/update/remove incrementally.
+	// A plain record (not a Map) keeps `svelte/prefer-svelte-reactivity` happy.
+	let overlaySeries: Record<string, ISeriesApi<'Line'>> = {};
 	// Fit the viewport only on the first load; later updates (e.g. live polling
 	// in #18) must not clobber the user's zoom/pan.
 	let fitted = false;
@@ -69,6 +76,38 @@
 		}
 	}
 
+	/**
+	 * Reconcile overlay line series with the `overlays` prop: add new ids,
+	 * update data/colour of existing ones, and remove series that disappeared.
+	 * No-op until the chart exists.
+	 */
+	function renderOverlays(input: ChartOverlay[]): void {
+		if (!chart) return;
+		const seen = input.map((o) => o.id);
+		for (const overlay of input) {
+			let line = overlaySeries[overlay.id];
+			if (!line) {
+				line = chart.addSeries(LineSeries, {
+					color: overlay.color,
+					lineWidth: 2,
+					title: overlay.title ?? overlay.id,
+					priceLineVisible: false,
+					lastValueVisible: false
+				});
+				overlaySeries[overlay.id] = line;
+			} else {
+				line.applyOptions({ color: overlay.color, title: overlay.title ?? overlay.id });
+			}
+			line.setData(toLineData(overlay.data));
+		}
+		for (const id of Object.keys(overlaySeries)) {
+			if (!seen.includes(id)) {
+				chart.removeSeries(overlaySeries[id]);
+				delete overlaySeries[id];
+			}
+		}
+	}
+
 	onMount(() => {
 		const palette = isDark()
 			? { background: '#0f172a', text: '#cbd5e1', grid: '#1e293b' }
@@ -90,6 +129,7 @@
 		series = chart.addSeries(CandlestickSeries);
 		render(candles);
 		renderMarkers(markers);
+		renderOverlays(overlays);
 
 		// Disposing the chart tears down its ResizeObserver and DOM nodes, so
 		// repeated mount/unmount cycles do not leak.
@@ -98,6 +138,7 @@
 			chart = undefined;
 			series = undefined;
 			markersPlugin = undefined;
+			overlaySeries = {};
 			fitted = false;
 		};
 	});
@@ -110,6 +151,11 @@
 	// Re-place markers whenever `markers` changes.
 	$effect(() => {
 		renderMarkers(markers);
+	});
+
+	// Reconcile overlay lines whenever `overlays` changes.
+	$effect(() => {
+		renderOverlays(overlays);
 	});
 </script>
 
