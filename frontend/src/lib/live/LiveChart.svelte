@@ -46,6 +46,8 @@
 		<div
 			class="flex h-full min-h-[280px] items-center justify-center p-6"
 			data-testid="live-chart-loading"
+			role="status"
+			aria-live="polite"
 		>
 			<div
 				class="h-6 w-6 animate-spin rounded-full border-2 border-slate-600 border-t-sky-400"
