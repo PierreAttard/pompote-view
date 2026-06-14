@@ -19,12 +19,14 @@
 //! and [`crate::fill`] modules: they are not backtest-specific concepts and
 //! will be reused by the live monitoring endpoints (#9 / #11).
 
+pub mod metrics;
 pub mod order;
 pub mod run;
 pub mod status;
 
 use thiserror::Error;
 
+pub use metrics::{BacktestMetrics, FillAggregate};
 pub use order::BacktestOrder;
 pub use run::{BacktestRun, BacktestRunDetail};
 pub use status::{BacktestStatus, InvalidBacktestStatus};

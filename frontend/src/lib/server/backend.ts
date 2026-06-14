@@ -13,13 +13,21 @@
  */
 import type {
 	BacktestCandles,
+	BacktestMetrics,
 	BacktestOrder,
 	BacktestRunDetail,
 	BacktestRunSummary,
 	Decision
 } from '$lib/api/types';
 
-export type { BacktestCandles, BacktestOrder, BacktestRunDetail, BacktestRunSummary, Decision };
+export type {
+	BacktestCandles,
+	BacktestMetrics,
+	BacktestOrder,
+	BacktestRunDetail,
+	BacktestRunSummary,
+	Decision
+};
 
 /** Connection config, built from private env by the caller. */
 export interface BackendConfig {
@@ -128,6 +136,22 @@ export async function getBacktestRunDecisions(
 		`${trimBase(config)}/api/v1/monitoring/backtests/${encodeURIComponent(runId)}/decisions`
 	);
 	return backendGet<Decision[]>(fetch, config, url);
+}
+
+/**
+ * Fetches the run's recomputed performance metrics (PnL/fees from
+ * `fills_backtest`). Best-effort at the call site: the detail page renders
+ * fine without them.
+ */
+export async function getBacktestRunMetrics(
+	fetch: typeof globalThis.fetch,
+	config: BackendConfig,
+	runId: string
+): Promise<BacktestMetrics> {
+	const url = new URL(
+		`${trimBase(config)}/api/v1/monitoring/backtests/${encodeURIComponent(runId)}/metrics`
+	);
+	return backendGet<BacktestMetrics>(fetch, config, url);
 }
 
 function trimBase(config: BackendConfig): string {

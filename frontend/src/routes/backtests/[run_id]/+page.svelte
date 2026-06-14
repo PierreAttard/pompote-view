@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import Chart from '$lib/chart/Chart.svelte';
 	import IndicatorToggles from '$lib/chart/IndicatorToggles.svelte';
+	import BacktestMetricsPanel from '$lib/components/BacktestMetricsPanel.svelte';
 	import BacktestRunSummaryPanel from '$lib/components/BacktestRunSummaryPanel.svelte';
 	import BiasBanner from '$lib/components/BiasBanner.svelte';
 	import type { PageData } from './$types';
@@ -38,6 +39,13 @@
 	<div class="rounded-md border border-slate-800 bg-slate-900/60 p-4">
 		<BacktestRunSummaryPanel {run} />
 	</div>
+
+	{#if data.metrics}
+		<div class="rounded-md border border-slate-800 bg-slate-900/60 p-4">
+			<h3 class="mb-3 text-sm font-medium text-slate-300">Performance</h3>
+			<BacktestMetricsPanel metrics={data.metrics} />
+		</div>
+	{/if}
 
 	<!-- Chart zone: OHLC background (Lot 4) + buy/sell markers (Lot 5) +
 	     indicator overlays (Lot 6), with a clean timeline-only fallback when

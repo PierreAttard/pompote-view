@@ -518,6 +518,77 @@
         ]
       }
     },
+    "/api/v1/monitoring/backtests/{run_id}/metrics": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Handler for `GET /api/v1/monitoring/backtests/{run_id}/metrics`.",
+        "operationId": "get_backtest_metrics",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Backtest run identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recomputed PnL/fees metrics for the run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestMetricsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` header."
+          },
+          "404": {
+            "description": "No run with that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected internal error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Datastore temporarily unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "x_api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/monitoring/backtests/{run_id}/orders": {
       "get": {
         "tags": [
@@ -920,6 +991,70 @@
             ],
             "description": "Echoes the requested row count for `too_many_rows`.",
             "minimum": 0
+          }
+        }
+      },
+      "BacktestMetricsDto": {
+        "type": "object",
+        "description": "Recomputed performance metrics for a run (from `fills_backtest`, §5 recipe).\n\nPnL/fees are cash-flow figures derived from the per-side aggregates; see\n[`domain::backtest::BacktestMetrics`] for the exact definition and the\nflat-position caveat. Money fields are quote-currency `f64` at this boundary.",
+        "required": [
+          "buy_fills",
+          "sell_fills",
+          "buy_quantity",
+          "sell_quantity",
+          "buy_notional",
+          "sell_notional",
+          "total_fees",
+          "gross_pnl",
+          "net_pnl"
+        ],
+        "properties": {
+          "buy_fills": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of buy fills.",
+            "minimum": 0
+          },
+          "buy_notional": {
+            "type": "number",
+            "format": "double",
+            "description": "Quote spent on buys."
+          },
+          "buy_quantity": {
+            "type": "number",
+            "format": "double",
+            "description": "Total bought base-asset quantity."
+          },
+          "gross_pnl": {
+            "type": "number",
+            "format": "double",
+            "description": "Gross cash-flow PnL (`sell_notional - buy_notional`, pre-fees)."
+          },
+          "net_pnl": {
+            "type": "number",
+            "format": "double",
+            "description": "Net cash-flow PnL (`gross_pnl - total_fees`)."
+          },
+          "sell_fills": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of sell fills.",
+            "minimum": 0
+          },
+          "sell_notional": {
+            "type": "number",
+            "format": "double",
+            "description": "Quote received from sells."
+          },
+          "sell_quantity": {
+            "type": "number",
+            "format": "double",
+            "description": "Total sold base-asset quantity."
+          },
+          "total_fees": {
+            "type": "number",
+            "format": "double",
+            "description": "Total fees over all fills."
           }
         }
       },

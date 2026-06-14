@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                side                   AS \"side!\",\n                count(*)               AS \"fills!\",\n                sum(quantity)          AS \"quantity!: Decimal\",\n                sum(price * quantity)  AS \"notional!: Decimal\",\n                sum(fee)               AS \"fees!: Decimal\"\n            FROM fills_backtest\n            WHERE run_id = $1\n            GROUP BY side\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "side!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "fills!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "quantity!: Decimal",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "notional!: Decimal",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "fees!: Decimal",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "9dc11a33e6715803f5b1aa758b634553e7a11d3c653746962739e9df2cf69fbe"
+}

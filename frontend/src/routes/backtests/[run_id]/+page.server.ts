@@ -5,9 +5,11 @@ import {
 	getBacktestRun,
 	getBacktestRunCandles,
 	getBacktestRunDecisions,
+	getBacktestRunMetrics,
 	getBacktestRunOrders,
 	type BackendConfig,
-	type BacktestCandles
+	type BacktestCandles,
+	type BacktestMetrics
 } from '$lib/server/backend';
 import { decisionsToOverlays, ordersToMarkers } from '$lib/backtest/series';
 import type { PageServerLoad } from './$types';
@@ -65,6 +67,15 @@ export const load: PageServerLoad = async ({ fetch, params }) => {
 		// Overlays unavailable -> chart renders without indicator lines.
 	}
 
+	// Recomputed PnL/fees metrics (V1+1). Best-effort: a failure must not break
+	// the detail page, so `null` simply hides the metrics panel.
+	let metrics: BacktestMetrics | null = null;
+	try {
+		metrics = await getBacktestRunMetrics(fetch, config, params.run_id);
+	} catch {
+		// Metrics unavailable -> panel hidden.
+	}
+
 	return {
 		detail,
 		source,
@@ -72,6 +83,7 @@ export const load: PageServerLoad = async ({ fetch, params }) => {
 		candleCount: candles.length,
 		markers,
 		overlays,
+		metrics,
 		timeframe: DEFAULT_TIMEFRAME
 	};
 };

@@ -24,7 +24,9 @@ use application::ports::{
     BacktestRepository, BacktestRunListQuery, BacktestSeriesQuery, RepositoryError,
 };
 use async_trait::async_trait;
-use domain::backtest::{BacktestOrder, BacktestRun, BacktestRunDetail, BacktestStatus};
+use domain::backtest::{
+    BacktestOrder, BacktestRun, BacktestRunDetail, BacktestStatus, FillAggregate,
+};
 use domain::decision::Decision;
 use domain::fill::Fill;
 use domain::order::{InvalidOrderSide, OrderSide};
@@ -302,6 +304,48 @@ impl BacktestRepository for SqlxBacktestRepository {
                 snapshot: row.snapshot,
             })
             .collect())
+    }
+
+    async fn fetch_fill_aggregates(
+        &self,
+        run_id: Uuid,
+    ) -> Result<Vec<FillAggregate>, RepositoryError> {
+        // `GROUP BY side` recipe (robot_rust/docs/backtester.md §5). At most two
+        // rows (buy/sell); each group is non-empty so the SUMs are non-null.
+        let rows = sqlx::query!(
+            r#"
+            SELECT
+                side                   AS "side!",
+                count(*)               AS "fills!",
+                sum(quantity)          AS "quantity!: Decimal",
+                sum(price * quantity)  AS "notional!: Decimal",
+                sum(fee)               AS "fees!: Decimal"
+            FROM fills_backtest
+            WHERE run_id = $1
+            GROUP BY side
+            "#,
+            run_id,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+
+        rows.into_iter()
+            .map(|row| {
+                Ok(FillAggregate {
+                    side: parse_side(&row.side)?,
+                    fills: u64::try_from(row.fills).map_err(|_| {
+                        RepositoryError::Internal(format!(
+                            "negative fill count `{}` from aggregate (unexpected)",
+                            row.fills
+                        ))
+                    })?,
+                    quantity: row.quantity,
+                    notional: row.notional,
+                    fees: row.fees,
+                })
+            })
+            .collect()
     }
 }
 

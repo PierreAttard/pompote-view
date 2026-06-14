@@ -40,8 +40,8 @@ use adapters::outbound::persistence::{
     SqlxBacktestRepository, SqlxCandleRepository, SqlxHealthChecker, SqlxOrderRepository,
 };
 use application::use_cases::{
-    GetBacktestRun, GetBacktestRunCandles, GetBacktestSeries, GetCandles, GetOrders,
-    ListBacktestRuns, ReadinessProbe,
+    GetBacktestRun, GetBacktestRunCandles, GetBacktestRunMetrics, GetBacktestSeries, GetCandles,
+    GetOrders, ListBacktestRuns, ReadinessProbe,
 };
 use axum::Router;
 use sqlx::PgPool;
@@ -201,6 +201,30 @@ async fn seed(pool: &PgPool) {
     .execute(pool)
     .await
     .expect("seed order");
+
+    // Two fills (buy then sell) so the metrics endpoint has a cash-flow PnL to
+    // recompute: bought 0.5 @ 100 (fee 0.1), sold 0.5 @ 130 (fee 0.2).
+    sqlx::query(
+        "INSERT INTO fills_backtest (id, run_id, order_id, decision_id, session_id, strategy_id, \
+         strategy_kind, exchange, symbol, side, price, quantity, fee, fee_asset, market_ts, \
+         executed_at) VALUES \
+         ('66666666-6666-6666-6666-666666666666'::uuid, $1::uuid, \
+         '55555555-5555-5555-5555-555555555555'::uuid, \
+         '22222222-2222-2222-2222-222222222222'::uuid, \
+         '33333333-3333-3333-3333-333333333333'::uuid, \
+         '44444444-4444-4444-4444-444444444444'::uuid, 'directional', 'binance', 'BTCUSDT', \
+         'buy', 100, 0.5, 0.1, 'USDT', '2026-06-01T01:30:00Z', '2026-06-01T01:30:00Z'), \
+         ('77777777-7777-7777-7777-777777777777'::uuid, $1::uuid, \
+         '55555555-5555-5555-5555-555555555555'::uuid, \
+         '22222222-2222-2222-2222-222222222222'::uuid, \
+         '33333333-3333-3333-3333-333333333333'::uuid, \
+         '44444444-4444-4444-4444-444444444444'::uuid, 'directional', 'binance', 'BTCUSDT', \
+         'sell', 130, 0.5, 0.2, 'USDT', '2026-06-01T02:00:00Z', '2026-06-01T02:00:00Z')",
+    )
+    .bind(RUN_ID)
+    .execute(pool)
+    .await
+    .expect("seed fills");
 }
 
 /// Wires the real composition root over the test pool (mirrors `main.rs`).
@@ -221,7 +245,11 @@ fn build_app(pool: PgPool) -> Router {
         list_backtest_runs: Arc::new(ListBacktestRuns::new(backtest_repo.clone())),
         get_backtest_run: Arc::new(GetBacktestRun::new(backtest_repo.clone())),
         get_backtest_series: Arc::new(GetBacktestSeries::new(backtest_repo.clone(), clock)),
-        get_backtest_candles: Arc::new(GetBacktestRunCandles::new(backtest_repo, get_candles)),
+        get_backtest_candles: Arc::new(GetBacktestRunCandles::new(
+            backtest_repo.clone(),
+            get_candles,
+        )),
+        get_backtest_metrics: Arc::new(GetBacktestRunMetrics::new(backtest_repo)),
     };
     build_router(state).merge(openapi_router(false))
 }
@@ -413,4 +441,30 @@ async fn backtest_endpoints(ctx: &TestCtx) {
     let body: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(body["source"], "candles_5s");
     assert_eq!(body["candles"].as_array().unwrap().len(), 3);
+
+    // Recomputed metrics from the two seeded fills (buy 0.5@100, sell 0.5@130).
+    let resp = get(
+        ctx,
+        &format!("/api/v1/monitoring/backtests/{RUN_ID}/metrics"),
+    )
+    .await;
+    assert_eq!(resp.status(), 200, "backtest metrics");
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["buy_fills"], 1);
+    assert_eq!(body["sell_fills"], 1);
+    assert_eq!(body["gross_pnl"], 15.0); // 65 - 50
+    assert_eq!(body["total_fees"], 0.3); // 0.1 + 0.2
+    assert_eq!(body["net_pnl"], 14.7); // 15 - 0.3
+
+    // Unknown run -> 404 on metrics too.
+    assert_eq!(
+        get(
+            ctx,
+            "/api/v1/monitoring/backtests/99999999-9999-9999-9999-999999999999/metrics"
+        )
+        .await
+        .status(),
+        404,
+        "metrics unknown run"
+    );
 }

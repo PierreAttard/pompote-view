@@ -335,8 +335,13 @@ mod tests {
     }
 
     fn state_with(repo: Arc<dyn CandleRepository>, clock: Arc<dyn Clock>) -> AppState {
-        let (list_backtest_runs, get_backtest_run, get_backtest_series, get_backtest_candles) =
-            crate::inbound::http::state::test_support::stub_backtest_use_cases();
+        let (
+            list_backtest_runs,
+            get_backtest_run,
+            get_backtest_series,
+            get_backtest_candles,
+            get_backtest_metrics,
+        ) = crate::inbound::http::state::test_support::stub_backtest_use_cases();
         AppState {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(DummyHealth))),
             api_key: Arc::new(b"unused".to_vec()),
@@ -346,6 +351,7 @@ mod tests {
             get_backtest_run,
             get_backtest_series,
             get_backtest_candles,
+            get_backtest_metrics,
         }
     }
 

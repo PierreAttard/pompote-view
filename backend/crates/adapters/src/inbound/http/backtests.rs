@@ -27,10 +27,10 @@ use uuid::Uuid;
 
 use application::ports::RepositoryError;
 use application::use_cases::{
-    GetBacktestCandlesError, GetBacktestError, GetBacktestSeriesInput, GetCandlesError,
-    ListBacktestRunsInput,
+    GetBacktestCandlesError, GetBacktestError, GetBacktestMetricsError, GetBacktestSeriesInput,
+    GetCandlesError, ListBacktestRunsInput,
 };
-use domain::backtest::{BacktestQueryError, BacktestStatus};
+use domain::backtest::{BacktestMetrics, BacktestQueryError, BacktestStatus};
 use domain::candle::{CandleQueryError, Timeframe};
 
 use super::candles::CandleDto;
@@ -458,6 +458,18 @@ impl From<GetBacktestError> for BacktestApiError {
     }
 }
 
+impl From<GetBacktestMetricsError> for BacktestApiError {
+    fn from(err: GetBacktestMetricsError) -> Self {
+        match err {
+            GetBacktestMetricsError::RunNotFound => Self::NotFound,
+            GetBacktestMetricsError::Repository(RepositoryError::Unavailable(d)) => {
+                Self::DbUnavailable(d)
+            }
+            GetBacktestMetricsError::Repository(RepositoryError::Internal(d)) => Self::Internal(d),
+        }
+    }
+}
+
 impl From<GetBacktestCandlesError> for BacktestApiError {
     fn from(err: GetBacktestCandlesError) -> Self {
         match err {
@@ -673,6 +685,74 @@ pub async fn get_backtest_candles(
     }))
 }
 
+/// Recomputed performance metrics for a run (from `fills_backtest`, §5 recipe).
+///
+/// PnL/fees are cash-flow figures derived from the per-side aggregates; see
+/// [`domain::backtest::BacktestMetrics`] for the exact definition and the
+/// flat-position caveat. Money fields are quote-currency `f64` at this boundary.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BacktestMetricsDto {
+    /// Number of buy fills.
+    pub buy_fills: u64,
+    /// Number of sell fills.
+    pub sell_fills: u64,
+    /// Total bought base-asset quantity.
+    pub buy_quantity: f64,
+    /// Total sold base-asset quantity.
+    pub sell_quantity: f64,
+    /// Quote spent on buys.
+    pub buy_notional: f64,
+    /// Quote received from sells.
+    pub sell_notional: f64,
+    /// Total fees over all fills.
+    pub total_fees: f64,
+    /// Gross cash-flow PnL (`sell_notional - buy_notional`, pre-fees).
+    pub gross_pnl: f64,
+    /// Net cash-flow PnL (`gross_pnl - total_fees`).
+    pub net_pnl: f64,
+}
+
+impl From<BacktestMetrics> for BacktestMetricsDto {
+    fn from(m: BacktestMetrics) -> Self {
+        Self {
+            buy_fills: m.buy_fills,
+            sell_fills: m.sell_fills,
+            buy_quantity: cast(m.buy_quantity),
+            sell_quantity: cast(m.sell_quantity),
+            buy_notional: cast(m.buy_notional),
+            sell_notional: cast(m.sell_notional),
+            total_fees: cast(m.total_fees),
+            gross_pnl: cast(m.gross_pnl),
+            net_pnl: cast(m.net_pnl),
+        }
+    }
+}
+
+/// Handler for `GET /api/v1/monitoring/backtests/{run_id}/metrics`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/monitoring/backtests/{run_id}/metrics",
+    tag = "monitoring",
+    params(
+        ("run_id" = Uuid, Path, description = "Backtest run identifier"),
+    ),
+    responses(
+        (status = 200, description = "Recomputed PnL/fees metrics for the run.", body = BacktestMetricsDto),
+        (status = 401, description = "Missing or invalid `X-API-Key` header."),
+        (status = 404, description = "No run with that id.", body = BacktestErrorBody),
+        (status = 503, description = "Datastore temporarily unreachable.", body = BacktestErrorBody),
+        (status = 500, description = "Unexpected internal error.", body = BacktestErrorBody),
+    ),
+    security(("x_api_key" = [])),
+)]
+pub async fn get_backtest_metrics(
+    State(state): State<AppState>,
+    Path(run_id): Path<Uuid>,
+) -> Result<Json<BacktestMetricsDto>, BacktestApiError> {
+    let metrics = state.get_backtest_metrics.run(run_id).await?;
+    Ok(Json(metrics.into()))
+}
+
 /// Builds a [`GetBacktestSeriesInput`] from a run id and query params.
 fn series_input(run_id: Uuid, params: SeriesParams) -> GetBacktestSeriesInput {
     GetBacktestSeriesInput {
@@ -693,7 +773,8 @@ mod tests {
         CandleRepository, Clock, RepositoryError,
     };
     use application::use_cases::{
-        GetBacktestRun, GetBacktestRunCandles, GetBacktestSeries, GetCandles, ListBacktestRuns,
+        GetBacktestRun, GetBacktestRunCandles, GetBacktestRunMetrics, GetBacktestSeries,
+        GetCandles, ListBacktestRuns,
     };
     use async_trait::async_trait;
     use axum::{
@@ -703,7 +784,9 @@ mod tests {
         routing::get,
     };
     use chrono::TimeZone;
-    use domain::backtest::{BacktestOrder, BacktestRun, BacktestRunDetail, BacktestStatus};
+    use domain::backtest::{
+        BacktestOrder, BacktestRun, BacktestRunDetail, BacktestStatus, FillAggregate,
+    };
     use domain::candle::Candle;
     use domain::decision::Decision;
     use domain::fill::Fill;
@@ -742,6 +825,7 @@ mod tests {
         orders: Vec<BacktestOrder>,
         fills: Vec<Fill>,
         decisions: Vec<Decision>,
+        aggregates: Vec<FillAggregate>,
         /// Candles served by the composed `GetCandles` use case in `app()`.
         candles: Vec<Candle>,
     }
@@ -786,6 +870,12 @@ mod tests {
         ) -> Result<Vec<Decision>, RepositoryError> {
             Ok(self.decisions.clone())
         }
+        async fn fetch_fill_aggregates(
+            &self,
+            _id: Uuid,
+        ) -> Result<Vec<FillAggregate>, RepositoryError> {
+            Ok(self.aggregates.clone())
+        }
     }
 
     struct FixedClock;
@@ -803,9 +893,11 @@ mod tests {
         let detail = Arc::new(GetBacktestRun::new(repo.clone()));
         let series = Arc::new(GetBacktestSeries::new(repo.clone(), Arc::new(FixedClock)));
         let get_candles = Arc::new(GetCandles::new(candle_repo, Arc::new(FixedClock)));
-        let candles = Arc::new(GetBacktestRunCandles::new(repo, get_candles));
-        let state =
-            super::super::state::test_support::state_with_backtests(list, detail, series, candles);
+        let candles = Arc::new(GetBacktestRunCandles::new(repo.clone(), get_candles));
+        let metrics = Arc::new(GetBacktestRunMetrics::new(repo));
+        let state = super::super::state::test_support::state_with_backtests(
+            list, detail, series, candles, metrics,
+        );
         Router::new()
             .route("/api/v1/monitoring/backtests", get(list_backtests))
             .route("/api/v1/monitoring/backtests/{run_id}", get(get_backtest))
@@ -824,6 +916,10 @@ mod tests {
             .route(
                 "/api/v1/monitoring/backtests/{run_id}/candles",
                 get(get_backtest_candles),
+            )
+            .route(
+                "/api/v1/monitoring/backtests/{run_id}/metrics",
+                get(get_backtest_metrics),
             )
             .with_state(state)
     }
@@ -1154,6 +1250,65 @@ mod tests {
                 Request::get(
                     "/api/v1/monitoring/backtests/00000000-0000-0000-0000-000000000009/candles\
                      ?timeframe=1h",
+                )
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn metrics_returns_200_with_cash_flow_pnl() {
+        let app = app(Arc::new(StubRepo {
+            detail: Some(BacktestRunDetail {
+                run: sample_run(),
+                config_snapshot: serde_json::json!({}),
+            }),
+            aggregates: vec![
+                FillAggregate {
+                    side: OrderSide::Buy,
+                    fills: 1,
+                    quantity: dec!(1),
+                    notional: dec!(100),
+                    fees: dec!(0.1),
+                },
+                FillAggregate {
+                    side: OrderSide::Sell,
+                    fills: 1,
+                    quantity: dec!(1),
+                    notional: dec!(150),
+                    fees: dec!(0.1),
+                },
+            ],
+            ..Default::default()
+        }));
+        let resp = app
+            .oneshot(
+                Request::get(
+                    "/api/v1/monitoring/backtests/00000000-0000-0000-0000-000000000001/metrics",
+                )
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body["gross_pnl"], 50.0);
+        assert_eq!(body["net_pnl"], 49.8); // 50 - 0.2
+        assert_eq!(body["buy_fills"], 1);
+        assert_eq!(body["sell_fills"], 1);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn metrics_404_when_run_absent() {
+        let app = app(Arc::new(StubRepo::default()));
+        let resp = app
+            .oneshot(
+                Request::get(
+                    "/api/v1/monitoring/backtests/00000000-0000-0000-0000-000000000009/metrics",
                 )
                 .body(Body::empty())
                 .unwrap(),
