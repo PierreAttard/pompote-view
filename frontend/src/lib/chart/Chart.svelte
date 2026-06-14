@@ -2,13 +2,17 @@
 	import { onMount } from 'svelte';
 	import {
 		createChart,
+		createSeriesMarkers,
 		CandlestickSeries,
 		ColorType,
 		type IChartApi,
-		type ISeriesApi
+		type ISeriesApi,
+		type ISeriesMarkersPluginApi,
+		type Time
 	} from 'lightweight-charts';
 	import type { Candle } from '$lib/api/types';
 	import { toSeriesData } from './candles';
+	import { toSeriesMarkers, type ChartMarker } from './markers';
 
 	interface Props {
 		/**
@@ -17,15 +21,18 @@
 		 * indicator overlays land here in later lots).
 		 */
 		candles?: Candle[];
+		/** Buy/sell annotations placed at each decision/order timestamp. */
+		markers?: ChartMarker[];
 		/** Override the system colour-scheme preference (mostly for tests). */
 		dark?: boolean;
 	}
 
-	let { candles = [], dark }: Props = $props();
+	let { candles = [], markers = [], dark }: Props = $props();
 
 	let container: HTMLDivElement;
 	let chart: IChartApi | undefined;
 	let series: ISeriesApi<'Candlestick'> | undefined;
+	let markersPlugin: ISeriesMarkersPluginApi<Time> | undefined;
 	// Fit the viewport only on the first load; later updates (e.g. live polling
 	// in #18) must not clobber the user's zoom/pan.
 	let fitted = false;
@@ -51,6 +58,17 @@
 		}
 	}
 
+	/** Replace the buy/sell markers (no-op until the series exists). */
+	function renderMarkers(input: ChartMarker[]): void {
+		if (!series) return;
+		const data = toSeriesMarkers(input);
+		if (markersPlugin) {
+			markersPlugin.setMarkers(data);
+		} else {
+			markersPlugin = createSeriesMarkers(series, data);
+		}
+	}
+
 	onMount(() => {
 		const palette = isDark()
 			? { background: '#0f172a', text: '#cbd5e1', grid: '#1e293b' }
@@ -71,6 +89,7 @@
 
 		series = chart.addSeries(CandlestickSeries);
 		render(candles);
+		renderMarkers(markers);
 
 		// Disposing the chart tears down its ResizeObserver and DOM nodes, so
 		// repeated mount/unmount cycles do not leak.
@@ -78,6 +97,7 @@
 			chart?.remove();
 			chart = undefined;
 			series = undefined;
+			markersPlugin = undefined;
 			fitted = false;
 		};
 	});
@@ -85,6 +105,11 @@
 	// Re-render whenever `candles` changes (no-op until the series exists).
 	$effect(() => {
 		render(candles);
+	});
+
+	// Re-place markers whenever `markers` changes.
+	$effect(() => {
+		renderMarkers(markers);
 	});
 </script>
 

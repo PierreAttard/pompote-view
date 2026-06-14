@@ -26,6 +26,20 @@ describe('Chart.svelte', () => {
 		await expect.element(page.getByTestId('chart')).toBeInTheDocument();
 	});
 
+	it('renders buy/sell markers without throwing', async () => {
+		render(Chart, {
+			candles: candles(),
+			markers: [
+				{ ts: '2026-06-01T00:00:00Z', side: 'buy', text: 'B' },
+				{ ts: '2026-06-01T02:00:00Z', side: 'sell', text: 'S' }
+			],
+			dark: true
+		});
+		const chart = page.getByTestId('chart');
+		await expect.element(chart).toBeInTheDocument();
+		await expect.poll(() => chart.element().querySelectorAll('canvas').length).toBeGreaterThan(0);
+	});
+
 	it('cleans up the chart DOM on unmount (no leak)', async () => {
 		const { unmount } = render(Chart, { candles: candles() });
 		const container = page.getByTestId('chart').element();
