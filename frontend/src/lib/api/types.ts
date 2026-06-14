@@ -14,3 +14,6 @@ export type Candle = components['schemas']['CandleDto'];
 export type BacktestOrder = components['schemas']['BacktestOrderDto'];
 export type Decision = components['schemas']['DecisionDto'];
 export type BacktestMetrics = components['schemas']['BacktestMetricsDto'];
+export type Strategy = components['schemas']['StrategyDto'];
+export type LiveFill = components['schemas']['LiveFillDto'];
+export type LiveDecision = components['schemas']['LiveDecisionDto'];

@@ -1,5 +1,4 @@
 import { error } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
 import {
 	BackendError,
 	getBacktestRun,
@@ -7,14 +6,13 @@ import {
 	getBacktestRunDecisions,
 	getBacktestRunMetrics,
 	getBacktestRunOrders,
-	type BackendConfig,
 	type BacktestCandles,
 	type BacktestMetrics
 } from '$lib/server/backend';
+import { backendConfig } from '$lib/server/config';
 import { decisionsToOverlays, ordersToMarkers } from '$lib/backtest/series';
 import type { PageServerLoad } from './$types';
 
-const DEFAULT_BACKEND_URL = 'http://127.0.0.1:3100';
 /** Default aggregation for the detail view's candle background. */
 const DEFAULT_TIMEFRAME = '1h';
 
@@ -24,10 +22,7 @@ const DEFAULT_TIMEFRAME = '1h';
  * fails), the view degrades to timeline-only rather than erroring.
  */
 export const load: PageServerLoad = async ({ fetch, params }) => {
-	const config: BackendConfig = {
-		baseUrl: env.BACKEND_URL || DEFAULT_BACKEND_URL,
-		apiKey: env.VIZ_API_KEY ?? ''
-	};
+	const config = backendConfig();
 
 	let detail;
 	try {

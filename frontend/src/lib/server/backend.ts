@@ -17,7 +17,10 @@ import type {
 	BacktestOrder,
 	BacktestRunDetail,
 	BacktestRunSummary,
-	Decision
+	Decision,
+	LiveDecision,
+	LiveFill,
+	Strategy
 } from '$lib/api/types';
 
 export type {
@@ -26,7 +29,10 @@ export type {
 	BacktestOrder,
 	BacktestRunDetail,
 	BacktestRunSummary,
-	Decision
+	Decision,
+	LiveDecision,
+	LiveFill,
+	Strategy
 };
 
 /** Connection config, built from private env by the caller. */
@@ -152,6 +158,62 @@ export async function getBacktestRunMetrics(
 		`${trimBase(config)}/api/v1/monitoring/backtests/${encodeURIComponent(runId)}/metrics`
 	);
 	return backendGet<BacktestMetrics>(fetch, config, url);
+}
+
+/** Fetches every strategy (the live selector), with paper/live mode flags. */
+export async function listStrategies(
+	fetch: typeof globalThis.fetch,
+	config: BackendConfig
+): Promise<Strategy[]> {
+	const url = new URL(`${trimBase(config)}/api/v1/monitoring/strategies`);
+	return backendGet<Strategy[]>(fetch, config, url);
+}
+
+/** Fetches the allowed aggregation timeframes (finest to coarsest). */
+export async function getTimeframes(
+	fetch: typeof globalThis.fetch,
+	config: BackendConfig
+): Promise<string[]> {
+	const url = new URL(`${trimBase(config)}/api/v1/monitoring/timeframes`);
+	return backendGet<string[]>(fetch, config, url);
+}
+
+/**
+ * Fetches a strategy's live fills (execution markers) on a `[from, to)` window
+ * over `executed_at`.
+ */
+export async function getStrategyFills(
+	fetch: typeof globalThis.fetch,
+	config: BackendConfig,
+	strategyId: string,
+	from: string,
+	to?: string
+): Promise<LiveFill[]> {
+	const url = new URL(
+		`${trimBase(config)}/api/v1/monitoring/strategies/${encodeURIComponent(strategyId)}/fills`
+	);
+	url.searchParams.set('from', from);
+	if (to) url.searchParams.set('to', to);
+	return backendGet<LiveFill[]>(fetch, config, url);
+}
+
+/**
+ * Fetches a strategy's live decisions (with market context) on a `[from, to)`
+ * window over `created_at`.
+ */
+export async function getStrategyDecisions(
+	fetch: typeof globalThis.fetch,
+	config: BackendConfig,
+	strategyId: string,
+	from: string,
+	to?: string
+): Promise<LiveDecision[]> {
+	const url = new URL(
+		`${trimBase(config)}/api/v1/monitoring/strategies/${encodeURIComponent(strategyId)}/decisions`
+	);
+	url.searchParams.set('from', from);
+	if (to) url.searchParams.set('to', to);
+	return backendGet<LiveDecision[]>(fetch, config, url);
 }
 
 function trimBase(config: BackendConfig): string {

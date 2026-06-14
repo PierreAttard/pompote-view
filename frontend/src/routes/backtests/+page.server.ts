@@ -1,14 +1,7 @@
 import { error } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
-import {
-	BackendError,
-	listBacktestRuns,
-	type BacktestRunFilters,
-	type BackendConfig
-} from '$lib/server/backend';
+import { BackendError, listBacktestRuns, type BacktestRunFilters } from '$lib/server/backend';
+import { backendConfig } from '$lib/server/config';
 import type { PageServerLoad } from './$types';
-
-const DEFAULT_BACKEND_URL = 'http://127.0.0.1:3100';
 
 /**
  * Loads the backtest runs server-side so the `X-API-Key` never reaches the
@@ -16,10 +9,7 @@ const DEFAULT_BACKEND_URL = 'http://127.0.0.1:3100';
  * plain GET), keeping them shareable/bookmarkable.
  */
 export const load: PageServerLoad = async ({ fetch, url }) => {
-	const config: BackendConfig = {
-		baseUrl: env.BACKEND_URL || DEFAULT_BACKEND_URL,
-		apiKey: env.VIZ_API_KEY ?? ''
-	};
+	const config = backendConfig();
 
 	const filters: BacktestRunFilters = {
 		status: url.searchParams.get('status') ?? undefined,
