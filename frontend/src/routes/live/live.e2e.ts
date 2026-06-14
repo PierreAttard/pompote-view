@@ -197,3 +197,21 @@ test('indicator toggles enable a sub-chart from decision snapshots', async ({ pa
 	// The chart keeps rendering with the extra pane.
 	await expect(page.getByTestId('chart').locator('canvas').first()).toBeVisible();
 });
+
+test('the volume profile renders beside the chart with a POC', async ({ page }) => {
+	await page.route('**/api/candles**', (route) =>
+		route.fulfill({ json: CANDLES, headers: { 'content-type': 'application/json' } })
+	);
+
+	await page.goto('/live?strategy=smoke&exchange=binance&symbol=BTCUSDT&timeframe=1h&preset=24h');
+
+	const selectors = page.getByTestId('live-selectors');
+	if (!(await selectors.isVisible().catch(() => false))) {
+		test.skip(true, 'viz backend not reachable — live selectors did not load');
+	}
+
+	await expect(page.getByTestId('chart').locator('canvas').first()).toBeVisible();
+	// Volume profile (#25) is aggregated client-side from the candles.
+	await expect(page.getByTestId('volume-profile')).toBeVisible();
+	await expect(page.getByTestId('vp-poc')).toBeVisible();
+});
