@@ -32,11 +32,34 @@ npm run dev
 # → http://localhost:5173
 ```
 
-### Stack complète (Timescale + backend + frontend)
+### Stack complète locale (Docker Compose)
+
+`docker compose` démarre les 4 services dans l'ordre : **Timescale → `migrate` (one-shot) → backend viz → frontend**.
+
+**Prérequis** : un checkout local de [`robot_rust`](https://github.com/PierreAttard/robot_rust). Ses migrations construisent le schéma de la base — aucun `.sql` de schéma n'est dupliqué dans ce repo.
 
 ```bash
-docker compose up
+cp .env.example .env.local
+# Ajuste si besoin ROBOT_RUST_PATH (défaut ../robot_rust), la clé API et les mots de passe.
+docker compose --env-file .env.local up
 ```
+
+| Service | URL / port | Rôle |
+|---|---|---|
+| `frontend` | http://localhost:5173 | SvelteKit (Vite dev) |
+| `viz_api` | http://localhost:8080/healthz | backend read-only (Swagger UI sur `/swagger-ui` si `VIZ_ENABLE_SWAGGER_UI=true`) |
+| `timescale` | `localhost:5432` | TimescaleDB (volume persistant) |
+
+**Ce que fait `docker compose up` :**
+
+1. `timescale` démarre (healthcheck `pg_isready`).
+2. `migrate` (one-shot) applique les migrations `*.up.sql` de `robot_rust` (bind-mount **lecture seule** de `ROBOT_RUST_PATH/crates/robot_rust/migrations`), puis crée le rôle **`pompote_viz_reader`** (`GRANT SELECT` only) — miroir local du setup OVH.
+3. `viz_api` démarre une fois `migrate` terminé, connecté avec le rôle read-only.
+4. `frontend` démarre quand le backend est *healthy* ; la clé API reste **côté serveur** (le navigateur n'appelle que le proxy SvelteKit `/api/*`).
+
+> La DB locale démarre **vide** : tout le schéma provient des migrations `robot_rust`. Sans checkout valide (`ROBOT_RUST_PATH`), le service `migrate` échoue volontairement avec un message clair.
+>
+> Le volume Timescale **persiste** entre les `up`/`down` : `migrate` ne rejoue les migrations que sur une base vierge (sinon il les saute et sort proprement). Pour repartir d'une base propre : `docker compose down -v`.
 
 ## Garde-fous
 
@@ -74,4 +97,4 @@ Pour les tests d'intégration backend (qui spinnent un Postgres jetable et appli
 
 - `integration.yml` — Postgres jetable + schéma `robot_rust` (Issue #12).
 - `e2e.yml` — Playwright smoke tests (Lot 7 ou issue dédiée).
-- Dockerfiles + `docker-compose.yml` (Lot 8 — déploiement local).
+- Images de production (slim/distroless) + manifests K8s (Lot 8, #28–#32). Le `docker-compose.yml` local est livré (#5, cf. « Stack complète locale » ci-dessus).
