@@ -44,8 +44,27 @@ describe('LiveSelectors.svelte', () => {
 
 	it('filters the strategy list to live-enabled when mode=live', async () => {
 		render(LiveSelectors, props({ mode: 'live' }));
-		await expect.element(page.getByRole('option', { name: /live_only/ })).toBeInTheDocument();
-		expect(page.getByRole('option', { name: /paper_only/ }).elements()).toHaveLength(0);
+		// Scope to the primary select: a second (comparison) select also lists them.
+		const primary = page.getByTestId('select-strategy');
+		await expect.element(primary.getByRole('option', { name: /live_only/ })).toBeInTheDocument();
+		expect(primary.getByRole('option', { name: /paper_only/ }).elements()).toHaveLength(0);
+	});
+
+	it('offers a comparison selector that excludes the primary strategy (#34)', async () => {
+		render(LiveSelectors, props({ strategyId: 'l1' }));
+		const compare = page.getByTestId('select-strategy-2');
+		await expect.element(compare).toBeInTheDocument();
+		await expect.element(compare.getByRole('option', { name: /Aucune/ })).toBeInTheDocument();
+		// The other strategy is offered; the primary one is not (no self-compare).
+		await expect.element(compare.getByRole('option', { name: /paper_only/ })).toBeInTheDocument();
+		expect(compare.getByRole('option', { name: /live_only/ }).elements()).toHaveLength(0);
+	});
+
+	it('reports a comparison strategy change through onChange (#34)', async () => {
+		const onChange = vi.fn();
+		render(LiveSelectors, props({ strategyId: 'l1', onChange }));
+		await page.getByTestId('select-strategy-2').selectOptions('p1');
+		expect(onChange).toHaveBeenCalledWith('strategy2', 'p1');
 	});
 
 	it('reports a preset click through onChange', async () => {

@@ -14,6 +14,11 @@ export interface ChartMarker {
 	side: string;
 	/** Optional short label drawn next to the marker (e.g. `B`/`S`). */
 	text?: string;
+	/**
+	 * Optional colour override. The shape still encodes the side (up/down arrow);
+	 * this lets a second compared strategy use a distinct colour (#34).
+	 */
+	color?: string;
 }
 
 const BUY_COLOR = '#22c55e';
@@ -40,7 +45,7 @@ export function toSeriesMarkers(input: ChartMarker[]): SeriesMarker<UTCTimestamp
 				time: time as UTCTimestamp,
 				position: 'belowBar',
 				shape: 'arrowUp',
-				color: BUY_COLOR,
+				color: m.color ?? BUY_COLOR,
 				text: m.text
 			});
 		} else if (side === 'sell') {
@@ -48,7 +53,7 @@ export function toSeriesMarkers(input: ChartMarker[]): SeriesMarker<UTCTimestamp
 				time: time as UTCTimestamp,
 				position: 'aboveBar',
 				shape: 'arrowDown',
-				color: SELL_COLOR,
+				color: m.color ?? SELL_COLOR,
 				text: m.text
 			});
 		} else {
@@ -56,7 +61,7 @@ export function toSeriesMarkers(input: ChartMarker[]): SeriesMarker<UTCTimestamp
 				time: time as UTCTimestamp,
 				position: 'inBar',
 				shape: 'circle',
-				color: NEUTRAL_COLOR,
+				color: m.color ?? NEUTRAL_COLOR,
 				text: m.text
 			});
 		}

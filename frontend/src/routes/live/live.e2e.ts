@@ -304,3 +304,38 @@ test('exports the current window as PNG and CSV (#33)', async ({ page }) => {
 	]);
 	expect(png.suggestedFilename()).toMatch(/chart-BTCUSDT-1h\.png/);
 });
+
+test('compares a second strategy: both strategies fetch orders, candles once (#34)', async ({
+	page
+}) => {
+	const ordersStrategies = new Set<string>();
+	let candlesCalls = 0;
+	await page.route('**/api/candles**', (route) => {
+		candlesCalls += 1;
+		return route.fulfill({ json: CANDLES, headers: { 'content-type': 'application/json' } });
+	});
+	await page.route('**/api/strategies/*/orders**', (route) => {
+		// /api/strategies/<id>/orders → id is path segment 3.
+		ordersStrategies.add(new URL(route.request().url()).pathname.split('/')[3]);
+		return route.fulfill({ json: [], headers: { 'content-type': 'application/json' } });
+	});
+	await page.route('**/api/strategies/*/decisions**', (route) =>
+		route.fulfill({ json: [], headers: { 'content-type': 'application/json' } })
+	);
+
+	await page.goto(
+		'/live?strategy=stratA&strategy2=stratB&exchange=binance&symbol=BTCUSDT&timeframe=1h&preset=24h'
+	);
+
+	const selectors = page.getByTestId('live-selectors');
+	if (!(await selectors.isVisible().catch(() => false))) {
+		test.skip(true, 'viz backend not reachable — live selectors did not load');
+	}
+
+	await expect(page.getByTestId('chart').locator('canvas').first()).toBeVisible();
+
+	// Both strategies' orders are requested (the overlay), but candles are not
+	// doubled — they don't depend on the strategy.
+	await expect.poll(() => [...ordersStrategies].sort().join(',')).toBe('stratA,stratB');
+	expect(candlesCalls).toBe(1);
+});

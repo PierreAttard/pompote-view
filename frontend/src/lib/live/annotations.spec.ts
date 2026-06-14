@@ -66,6 +66,16 @@ describe('ordersToMarkers', () => {
 			{ ts: '2026-06-01T00:30:00Z', side: 'weird', text: '?' }
 		]);
 	});
+
+	it('applies a colour override to every marker when given one (#34)', () => {
+		const [m] = ordersToMarkers([order({ side: 'buy' })], '#a855f7');
+		expect(m).toMatchObject({ side: 'buy', text: 'B', color: '#a855f7' });
+	});
+
+	it('omits the colour key when none is given', () => {
+		const [m] = ordersToMarkers([order({ side: 'buy' })]);
+		expect(m.color).toBeUndefined();
+	});
 });
 
 describe('indexDecisionsById', () => {
