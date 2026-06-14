@@ -96,6 +96,25 @@ describe('LiveChart.svelte', () => {
 		await expect.element(page.getByTestId('export-csv')).toBeInTheDocument();
 	});
 
+	it('triggers the CSV and PNG exports without throwing', async () => {
+		candlesResult.current = {
+			isPending: false,
+			isError: false,
+			data: candles(),
+			refetch: vi.fn(),
+			dataUpdatedAt: Date.now()
+		};
+		render(LiveChart, props);
+		await expect
+			.poll(() => page.getByTestId('chart').element().querySelectorAll('canvas').length)
+			.toBeGreaterThan(0);
+		// Exercises exportCsv (downloadText) and exportPng (takeScreenshot →
+		// downloadCanvasPng) against the real chart; the view stays functional.
+		await page.getByTestId('export-csv').click();
+		await page.getByTestId('export-png').click();
+		await expect.element(page.getByTestId('chart')).toBeInTheDocument();
+	});
+
 	it('exposes indicator toggles and reconciles sub-chart panes when toggling', async () => {
 		candlesResult.current = { isPending: false, isError: false, data: candles(), refetch: vi.fn() };
 		decisionsData.current = [
