@@ -76,3 +76,18 @@ navigateur. Deux variables sont lues via `$env/dynamic/private` :
 > `.env.example` n'est commité (même raison que côté backend) ; en local, place
 > ces valeurs dans `frontend/.env` (gitignoré). Sans `VIZ_API_KEY`, les pages
 > backtest renvoient une erreur backend (401/500).
+
+## Client HTTP & data fetching
+
+La **clé API reste strictement côté serveur**. Le navigateur n'appelle donc
+jamais le backend Rust directement :
+
+- **Pages avec `load`** (ex. backtest) → `load` serveur (`+page.server.ts`)
+  appelle `$lib/server/backend.ts` (clé injectée via `backendConfig()`).
+- **Appels navigateur** (live, polling) → routes SvelteKit same-origin
+  `src/routes/api/*/+server.ts` qui **proxient** vers le backend avec la clé
+  serveur ; le client navigateur `$lib/api/client.ts` (`apiGet`) tape ces
+  routes `/api/*` (aucun header secret), gère les erreurs (`ApiError`,
+  `isUnauthorized` pour le 401) et parse le JSON typé.
+- **Cache / dedup / polling 10s** : `@tanstack/svelte-query` via le
+  `QueryClientProvider` monté à la racine (`src/routes/+layout.svelte`).
