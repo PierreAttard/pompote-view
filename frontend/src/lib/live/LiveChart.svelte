@@ -17,6 +17,7 @@
 		type AnnotationParams
 	} from './annotations';
 	import {
+		boundedPollFrom,
 		candlesQueryKey,
 		fetchCandles,
 		mergeCandles,
@@ -57,7 +58,9 @@
 			// Incremental: fetch only `[lastTs, now]` and merge into the accumulated
 			// candles, so each poll transfers just the tail (not the whole window).
 			const prev = queryClient.getQueryData<Candle[]>(candlesQueryKey(params)) ?? [];
-			const from = prev.length > 0 ? prev[prev.length - 1].ts : params.from;
+			const lastTs = prev.length > 0 ? prev[prev.length - 1].ts : params.from;
+			// Bound the catch-up so a long-hidden tab can't overshoot the depth cap.
+			const from = boundedPollFrom(lastTs, Date.now(), timeframeSeconds(timeframe) ?? 0);
 			const fresh = await fetchCandles({ ...params, from, to: nowIso() });
 			return mergeCandles(prev, fresh);
 		},

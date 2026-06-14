@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Candle } from '$lib/api/types';
 import {
+	boundedPollFrom,
 	candlesPath,
 	candlesQueryKey,
 	fetchCandles,
@@ -98,6 +99,21 @@ describe('mergeCandles', () => {
 		]);
 	});
 
+	it('stays sorted and de-duplicated even if a poll returns unordered candles', () => {
+		const prev = [candle('2026-06-01T00:00:00Z', 1), candle('2026-06-01T01:00:00Z', 2)];
+		const fresh = [
+			candle('2026-06-01T02:00:00Z', 3),
+			candle('2026-06-01T01:00:00Z', 9) // out of order + overlaps the boundary
+		];
+		const merged = mergeCandles(prev, fresh);
+		expect(merged.map((c) => c.ts)).toEqual([
+			'2026-06-01T00:00:00Z',
+			'2026-06-01T01:00:00Z',
+			'2026-06-01T02:00:00Z'
+		]);
+		expect(merged[1].c).toBe(9); // fresh wins for the overlapping bucket
+	});
+
 	it('bounds growth to the cap, keeping the most recent candles', () => {
 		const prev = Array.from({ length: 5000 }, (_, i) =>
 			candle(new Date(Date.UTC(2026, 0, 1) + i * 60_000).toISOString(), i)
@@ -107,5 +123,25 @@ describe('mergeCandles', () => {
 		expect(merged).toHaveLength(5000);
 		expect(merged.at(-1)?.c).toBe(5000); // newest kept
 		expect(merged[0].c).toBe(1); // oldest dropped
+	});
+});
+
+describe('boundedPollFrom', () => {
+	const now = Date.parse('2026-06-10T00:00:00Z');
+
+	it('keeps lastTs when the gap is within the cap', () => {
+		const lastTs = new Date(now - 60_000).toISOString(); // 1 min ago, 1m timeframe
+		expect(boundedPollFrom(lastTs, now, 60)).toBe(lastTs);
+	});
+
+	it('clamps to now - cap*timeframe when the gap exceeds the cap (long-hidden tab)', () => {
+		const lastTs = new Date(now - 10_000 * 60_000).toISOString(); // 10000 min ago
+		expect(boundedPollFrom(lastTs, now, 60)).toBe(new Date(now - 5000 * 60 * 1000).toISOString());
+	});
+
+	it('returns lastTs unchanged for a non-positive timeframe or unparseable ts', () => {
+		const lastTs = '2026-06-09T00:00:00.000Z';
+		expect(boundedPollFrom(lastTs, now, 0)).toBe(lastTs);
+		expect(boundedPollFrom('nope', now, 60)).toBe('nope');
 	});
 });
