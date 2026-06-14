@@ -30,6 +30,11 @@ describe('ordersToMarkers', () => {
 		expect(markers[1]).toMatchObject({ side: 'sell', text: 'S' });
 	});
 
+	it('is case-insensitive on side', () => {
+		const markers = ordersToMarkers([order('Buy'), order('SELL')]);
+		expect(markers.map((m) => m.text)).toEqual(['B', 'S']);
+	});
+
 	it('falls back to ? for an unexpected side', () => {
 		expect(ordersToMarkers([order('hold')])[0].text).toBe('?');
 	});

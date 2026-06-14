@@ -9,11 +9,15 @@ import type { ChartOverlay, OverlayPoint } from '$lib/chart/overlays';
 
 /** Map orders to buy/sell chart markers (`B`/`S` labels). */
 export function ordersToMarkers(orders: BacktestOrder[]): ChartMarker[] {
-	return orders.map((o) => ({
-		ts: o.market_ts,
-		side: o.side,
-		text: o.side.toLowerCase() === 'buy' ? 'B' : o.side.toLowerCase() === 'sell' ? 'S' : '?'
-	}));
+	return orders.map((o) => {
+		// Defensive: API rows can contradict the `string` type at runtime.
+		const side = String(o.side ?? '').toLowerCase();
+		return {
+			ts: o.market_ts,
+			side: o.side,
+			text: side === 'buy' ? 'B' : side === 'sell' ? 'S' : '?'
+		};
+	});
 }
 
 // Deterministic, colour-blind-friendly palette assigned by sorted overlay key.
@@ -37,8 +41,7 @@ const OVERLAY_PALETTE = [
  * overlays (clean degradation).
  */
 export function decisionsToOverlays(decisions: Decision[]): ChartOverlay[] {
-	// Collect points per key, preserving first-seen order for stable ids.
-	const order: string[] = [];
+	// Collect points per numeric snapshot key, in market order per key.
 	const points: Record<string, OverlayPoint[]> = {};
 
 	for (const decision of decisions) {
@@ -46,15 +49,12 @@ export function decisionsToOverlays(decisions: Decision[]): ChartOverlay[] {
 		if (!snapshot) continue;
 		for (const [key, value] of Object.entries(snapshot)) {
 			if (typeof value !== 'number' || !Number.isFinite(value)) continue;
-			if (!points[key]) {
-				points[key] = [];
-				order.push(key);
-			}
-			points[key].push({ ts: decision.market_ts, value });
+			(points[key] ??= []).push({ ts: decision.market_ts, value });
 		}
 	}
 
-	const keys = order.sort((a, b) => a.localeCompare(b));
+	// Sort keys alphabetically so overlay ids and colours are deterministic.
+	const keys = Object.keys(points).sort((a, b) => a.localeCompare(b));
 	return keys.map((key, i) => ({
 		id: key,
 		title: key,
