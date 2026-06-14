@@ -22,7 +22,7 @@ use utoipa::{
 };
 use utoipa_swagger_ui::SwaggerUi;
 
-use super::{backtests, candles, orders};
+use super::{backtests, candles, orders, strategies};
 
 /// Top-level OpenAPI document for the viz backend.
 #[derive(OpenApi)]
@@ -44,6 +44,9 @@ use super::{backtests, candles, orders};
         backtests::get_backtest_decisions,
         backtests::get_backtest_candles,
         backtests::get_backtest_metrics,
+        strategies::get_timeframes,
+        strategies::list_strategies,
+        strategies::get_strategy_fills,
     ),
     components(
         schemas(
@@ -51,6 +54,9 @@ use super::{backtests, candles, orders};
             candles::CandleErrorBody,
             orders::OrderDto,
             orders::OrderErrorBody,
+            strategies::StrategyDto,
+            strategies::LiveFillDto,
+            strategies::StrategyErrorBody,
             backtests::BacktestRunSummaryDto,
             backtests::BacktestRunDetailDto,
             backtests::BacktestOrderDto,

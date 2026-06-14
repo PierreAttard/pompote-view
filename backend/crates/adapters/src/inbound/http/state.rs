@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use application::use_cases::{
     GetBacktestRun, GetBacktestRunCandles, GetBacktestRunMetrics, GetBacktestSeries, GetCandles,
-    GetOrders, ListBacktestRuns, ReadinessProbe,
+    GetOrders, GetStrategyFills, ListBacktestRuns, ListStrategies, ReadinessProbe,
 };
 
 /// Immutable runtime state shared by every HTTP handler.
@@ -33,6 +33,10 @@ pub struct AppState {
     pub get_backtest_candles: Arc<GetBacktestRunCandles>,
     /// `GET /api/v1/monitoring/backtests/:run_id/metrics` use case.
     pub get_backtest_metrics: Arc<GetBacktestRunMetrics>,
+    /// `GET /api/v1/monitoring/strategies` use case (selector listing).
+    pub list_strategies: Arc<ListStrategies>,
+    /// `GET /api/v1/monitoring/strategies/:id/fills` use case.
+    pub get_strategy_fills: Arc<GetStrategyFills>,
 }
 
 /// Test-only stubs shared across the HTTP module's unit tests.
@@ -52,19 +56,20 @@ pub(crate) mod test_support {
     use application::ports::{
         BacktestRepository, BacktestRunListQuery, BacktestSeriesQuery, CandleQuery,
         CandleRepository, Clock, HealthCheckError, HealthChecker, OrderQuery, OrderRepository,
-        RepositoryError,
+        RepositoryError, StrategyFillQuery, StrategyRepository,
     };
     use application::use_cases::{
         GetBacktestRun, GetBacktestRunCandles, GetBacktestRunMetrics, GetBacktestSeries,
-        GetCandles, GetOrders, ListBacktestRuns, ReadinessProbe,
+        GetCandles, GetOrders, GetStrategyFills, ListBacktestRuns, ListStrategies, ReadinessProbe,
     };
     use async_trait::async_trait;
     use chrono::{DateTime, Utc};
     use domain::backtest::{BacktestOrder, BacktestRun, BacktestRunDetail, FillAggregate};
     use domain::candle::Candle;
     use domain::decision::Decision;
-    use domain::fill::Fill;
+    use domain::fill::{Fill, LiveFill};
     use domain::order::Order;
+    use domain::strategy::Strategy;
     use uuid::Uuid;
 
     use super::AppState;
@@ -134,11 +139,34 @@ pub(crate) mod test_support {
         }
     }
 
+    struct EmptyStrategies;
+    #[async_trait]
+    impl StrategyRepository for EmptyStrategies {
+        async fn list_strategies(&self) -> Result<Vec<Strategy>, RepositoryError> {
+            Ok(vec![])
+        }
+        async fn fetch_fills_for_strategy(
+            &self,
+            _q: &StrategyFillQuery,
+        ) -> Result<Vec<LiveFill>, RepositoryError> {
+            Ok(vec![])
+        }
+    }
+
     struct NowClock;
     impl Clock for NowClock {
         fn now(&self) -> DateTime<Utc> {
             Utc::now()
         }
+    }
+
+    /// Builds the two strategy use cases over an empty repository.
+    pub(crate) fn stub_strategy_use_cases() -> (Arc<ListStrategies>, Arc<GetStrategyFills>) {
+        let repo = Arc::new(EmptyStrategies);
+        (
+            Arc::new(ListStrategies::new(repo.clone())),
+            Arc::new(GetStrategyFills::new(repo, Arc::new(NowClock))),
+        )
     }
 
     /// Builds the five backtest use cases over empty repositories.
@@ -170,6 +198,7 @@ pub(crate) mod test_support {
         get_backtest_candles: Arc<GetBacktestRunCandles>,
         get_backtest_metrics: Arc<GetBacktestRunMetrics>,
     ) -> AppState {
+        let (list_strategies, get_strategy_fills) = stub_strategy_use_cases();
         AppState {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(AlwaysOk))),
             api_key: Arc::new(b"unused".to_vec()),
@@ -180,6 +209,36 @@ pub(crate) mod test_support {
             get_backtest_series,
             get_backtest_candles,
             get_backtest_metrics,
+            list_strategies,
+            get_strategy_fills,
+        }
+    }
+
+    /// Builds an `AppState` with everything stubbed except the supplied
+    /// strategy use cases (for the strategy handler tests).
+    pub(crate) fn state_with_strategies(
+        list_strategies: Arc<ListStrategies>,
+        get_strategy_fills: Arc<GetStrategyFills>,
+    ) -> AppState {
+        let (
+            list_backtest_runs,
+            get_backtest_run,
+            get_backtest_series,
+            get_backtest_candles,
+            get_backtest_metrics,
+        ) = stub_backtest_use_cases();
+        AppState {
+            readiness: Arc::new(ReadinessProbe::new(Arc::new(AlwaysOk))),
+            api_key: Arc::new(b"unused".to_vec()),
+            get_candles: Arc::new(GetCandles::new(Arc::new(EmptyCandles), Arc::new(NowClock))),
+            get_orders: Arc::new(GetOrders::new(Arc::new(EmptyOrders), Arc::new(NowClock))),
+            list_backtest_runs,
+            get_backtest_run,
+            get_backtest_series,
+            get_backtest_candles,
+            get_backtest_metrics,
+            list_strategies,
+            get_strategy_fills,
         }
     }
 }

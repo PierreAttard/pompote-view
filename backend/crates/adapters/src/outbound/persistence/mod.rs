@@ -20,8 +20,10 @@ pub mod backtests;
 pub mod candles;
 pub mod health;
 pub mod orders;
+pub mod strategies;
 
 pub use backtests::SqlxBacktestRepository;
 pub use candles::SqlxCandleRepository;
 pub use health::SqlxHealthChecker;
 pub use orders::SqlxOrderRepository;
+pub use strategies::SqlxStrategyRepository;

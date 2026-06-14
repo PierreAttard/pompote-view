@@ -97,6 +97,8 @@ mod tests {
             get_backtest_candles,
             get_backtest_metrics,
         ) = crate::inbound::http::state::test_support::stub_backtest_use_cases();
+        let (list_strategies, get_strategy_fills) =
+            crate::inbound::http::state::test_support::stub_strategy_use_cases();
         let state = AppState {
             readiness: Arc::new(probe),
             api_key: Arc::new(b"unused".to_vec()),
@@ -110,6 +112,8 @@ mod tests {
             get_backtest_series,
             get_backtest_candles,
             get_backtest_metrics,
+            list_strategies,
+            get_strategy_fills,
         };
         Router::new()
             .route("/healthz", get(healthz))

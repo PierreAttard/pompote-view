@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id            AS \"id!: uuid::Uuid\",\n                name          AS \"name!\",\n                kind          AS \"kind!\",\n                enabled_paper AS \"enabled_paper!\",\n                enabled_live  AS \"enabled_live!\"\n            FROM strategies\n            ORDER BY name ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: uuid::Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "kind!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "enabled_paper!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "enabled_live!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c4f0173eb359d3bf9eb3f48671540badd67a2aa99299c2964d35756258fba142"
+}

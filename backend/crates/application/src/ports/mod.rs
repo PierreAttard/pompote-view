@@ -5,9 +5,11 @@ pub mod candle_repository;
 pub mod clock;
 pub mod health;
 pub mod order_repository;
+pub mod strategy_repository;
 
 pub use backtest_repository::{BacktestRepository, BacktestRunListQuery, BacktestSeriesQuery};
 pub use candle_repository::{CandleQuery, CandleRepository, RepositoryError};
 pub use clock::Clock;
 pub use health::{HealthCheckError, HealthChecker};
 pub use order_repository::{OrderQuery, OrderRepository};
+pub use strategy_repository::{StrategyFillQuery, StrategyRepository};

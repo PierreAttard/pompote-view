@@ -118,6 +118,8 @@ mod tests {
             get_backtest_candles,
             get_backtest_metrics,
         ) = crate::inbound::http::state::test_support::stub_backtest_use_cases();
+        let (list_strategies, get_strategy_fills) =
+            crate::inbound::http::state::test_support::stub_strategy_use_cases();
         AppState {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(DummyHealth))),
             api_key: Arc::new(api_key.as_bytes().to_vec()),
@@ -131,6 +133,8 @@ mod tests {
             get_backtest_series,
             get_backtest_candles,
             get_backtest_metrics,
+            list_strategies,
+            get_strategy_fills,
         }
     }
 
