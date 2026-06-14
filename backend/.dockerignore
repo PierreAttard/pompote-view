@@ -1,0 +1,6 @@
+# Keep the build context small and secret-free. `.sqlx` is intentionally kept
+# (the offline compile-time query cache the release build relies on).
+target/
+.env
+.env.*
+**/*.rs.bk
