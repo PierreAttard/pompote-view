@@ -5,6 +5,7 @@
 	import IndicatorToggles from '$lib/chart/IndicatorToggles.svelte';
 	import {
 		buildDecisionLookup,
+		COMPARE_MARKER_COLOR,
 		decisionsQueryKey,
 		fetchDecisions,
 		fetchFills,
@@ -35,13 +36,16 @@
 	interface Props extends CandlesParams {
 		/** Strategy whose orders/decisions annotate the chart. */
 		strategyId: string;
+		/** Optional second strategy to overlay for comparison (#34); '' = none. */
+		strategyId2?: string;
 	}
 
 	// The selectors flow in as props; the page derives the `[from, to)` window.
-	let { strategyId, exchange, symbol, timeframe, from, to }: Props = $props();
+	let { strategyId, strategyId2 = '', exchange, symbol, timeframe, from, to }: Props = $props();
 
 	const params = $derived<CandlesParams>({ exchange, symbol, timeframe, from, to });
 	const annotationParams = $derived<AnnotationParams>({ strategyId, from, to });
+	const annotationParams2 = $derived<AnnotationParams>({ strategyId: strategyId2, from, to });
 
 	const queryClient = useQueryClient();
 	// Upper bound for live fetches: always "now", so each poll picks up candles /
@@ -86,11 +90,27 @@
 		refetchInterval: POLL_INTERVAL_MS
 	}));
 
+	// Second strategy to compare (#34): its orders become markers in a distinct
+	// colour. Candles are NOT refetched per strategy, so polling is not doubled —
+	// only this small orders query is added when a comparison is active.
+	const ordersQuery2 = createQuery(() => ({
+		queryKey: ordersQueryKey(annotationParams2),
+		queryFn: () => fetchOrders({ ...annotationParams2, to: nowIso() }),
+		enabled: strategyId2 !== '',
+		refetchInterval: POLL_INTERVAL_MS
+	}));
+
 	const candles = $derived(candlesQuery.data ?? []);
 	const orders = $derived(ordersQuery.data ?? []);
+	const orders2 = $derived(ordersQuery2.data ?? []);
 	const decisions = $derived(decisionsQuery.data ?? []);
 
-	const markers = $derived(ordersToMarkers(orders));
+	// Primary markers keep the buy-green / sell-red palette; the compared strategy
+	// overlays its orders in violet (shape still encodes the side).
+	const markers = $derived([
+		...ordersToMarkers(orders),
+		...ordersToMarkers(orders2, COMPARE_MARKER_COLOR)
+	]);
 	// Bucket-aligned lookup so a crosshair landing on a bar resolves to the
 	// decisions whose orders fall in that candle.
 	const lookup = $derived(buildDecisionLookup(orders, decisions, timeframeSeconds(timeframe) ?? 0));

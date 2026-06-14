@@ -18,15 +18,24 @@ export interface AnnotationParams {
 	to: string;
 }
 
-/** Map live orders to buy/sell chart markers (`B`/`S`/`?` labels). */
-export function ordersToMarkers(orders: Order[]): ChartMarker[] {
+/** Marker colour for the second compared strategy (#34): violet, distinct from
+ * the buy-green / sell-red of the primary strategy. */
+export const COMPARE_MARKER_COLOR = '#a855f7';
+
+/**
+ * Map live orders to buy/sell chart markers (`B`/`S`/`?` labels). An optional
+ * `color` overrides the side palette so a second compared strategy stands out
+ * while keeping the buy/sell arrow shape (#34).
+ */
+export function ordersToMarkers(orders: Order[], color?: string): ChartMarker[] {
 	return orders.map((o) => {
 		// Defensive: API rows can contradict the `string` type at runtime.
 		const side = String(o.side ?? '').toLowerCase();
 		return {
 			ts: o.created_at,
 			side: o.side,
-			text: side === 'buy' ? 'B' : side === 'sell' ? 'S' : '?'
+			text: side === 'buy' ? 'B' : side === 'sell' ? 'S' : '?',
+			...(color ? { color } : {})
 		};
 	});
 }

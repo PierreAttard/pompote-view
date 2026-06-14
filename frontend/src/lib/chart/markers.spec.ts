@@ -48,4 +48,13 @@ describe('toSeriesMarkers', () => {
 	it('returns an empty array for empty input', () => {
 		expect(toSeriesMarkers([])).toEqual([]);
 	});
+
+	it('honours a colour override while keeping the side-driven shape (#34)', () => {
+		const [buy] = toSeriesMarkers([{ ts: '2026-06-01T00:00:00Z', side: 'buy', color: '#a855f7' }]);
+		expect(buy).toMatchObject({ shape: 'arrowUp', color: '#a855f7' });
+		const [sell] = toSeriesMarkers([
+			{ ts: '2026-06-01T00:00:00Z', side: 'sell', color: '#a855f7' }
+		]);
+		expect(sell).toMatchObject({ shape: 'arrowDown', color: '#a855f7' });
+	});
 });

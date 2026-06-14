@@ -11,6 +11,8 @@
 		timeframes: string[];
 		mode: ModeFilter;
 		strategyId: string;
+		/** Optional second strategy to overlay for comparison (#34); '' = none. */
+		strategyId2?: string;
 		exchange: string;
 		symbol: string;
 		timeframe: string;
@@ -24,6 +26,7 @@
 		timeframes,
 		mode,
 		strategyId,
+		strategyId2 = '',
 		exchange,
 		symbol,
 		timeframe,
@@ -70,6 +73,23 @@
 			<option value="">— Choisir —</option>
 			{#each visibleStrategies as s (s.id)}
 				<option value={s.id}>{s.name} ({s.kind})</option>
+			{/each}
+		</select>
+	</label>
+
+	<label class="flex flex-col gap-1 text-sm">
+		<span class="text-xs text-slate-400">Comparer (optionnel)</span>
+		<select
+			class="rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+			value={strategyId2}
+			data-testid="select-strategy-2"
+			onchange={(e) => onChange('strategy2', e.currentTarget.value || null)}
+		>
+			<option value="">— Aucune —</option>
+			{#each visibleStrategies as s (s.id)}
+				{#if s.id !== strategyId}
+					<option value={s.id}>{s.name} ({s.kind})</option>
+				{/if}
 			{/each}
 		</select>
 	</label>

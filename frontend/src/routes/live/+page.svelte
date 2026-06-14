@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { COMPARE_MARKER_COLOR } from '$lib/live/annotations';
 	import { depthStatus } from '$lib/live/depth';
 	import { DEFAULT_EXCHANGE, isExchange } from '$lib/live/exchanges';
 	import LiveChart from '$lib/live/LiveChart.svelte';
@@ -17,6 +18,7 @@
 	const params = $derived(page.url.searchParams);
 	const mode = $derived((params.get('mode') ?? 'all') as ModeFilter);
 	const strategyId = $derived(params.get('strategy') ?? '');
+	const strategyId2 = $derived(params.get('strategy2') ?? '');
 	const exchange = $derived(
 		isExchange(params.get('exchange')) ? params.get('exchange')! : DEFAULT_EXCHANGE
 	);
@@ -28,6 +30,7 @@
 
 	const window = $derived(presetWindow(preset));
 	const selectedStrategy = $derived(data.strategies.find((s) => s.id === strategyId) ?? null);
+	const selectedStrategy2 = $derived(data.strategies.find((s) => s.id === strategyId2) ?? null);
 	const ready = $derived(strategyId !== '' && symbol !== '');
 
 	// Guard the backend's 5000-point cap on the UI: when the (timeframe, range)
@@ -37,17 +40,24 @@
 
 	function update(key: string, value: string | null): void {
 		const changes: Record<string, string | null> = { [key]: value };
-		// Switching mode can orphan the selected strategy (not enabled for the new
-		// mode): drop it from the URL so the dropdown and selection stay coherent.
+		// Switching mode can orphan a selected strategy (not enabled for the new
+		// mode): drop it from the URL so the dropdowns and selection stay coherent.
 		if (key === 'mode') {
-			const sel = data.strategies.find((s) => s.id === strategyId);
-			const stillValid =
-				!sel ||
-				value === 'all' ||
-				value === null ||
-				(value === 'paper' ? sel.enabled_paper : sel.enabled_live);
-			if (!stillValid) changes.strategy = null;
+			const validForMode = (id: string): boolean => {
+				const sel = data.strategies.find((s) => s.id === id);
+				return (
+					!sel ||
+					value === 'all' ||
+					value === null ||
+					(value === 'paper' ? sel.enabled_paper : sel.enabled_live)
+				);
+			};
+			if (!validForMode(strategyId)) changes.strategy = null;
+			if (!validForMode(strategyId2)) changes.strategy2 = null;
 		}
+		// Comparing a strategy with itself makes no sense: drop the overlay when the
+		// primary is switched to the strategy already in the compare slot.
+		if (key === 'strategy' && value && value === strategyId2) changes.strategy2 = null;
 		// Resolve the route so navigation stays base-path-safe; only a same-origin
 		// query string is appended.
 		const qs = nextQuery(page.url.searchParams, changes);
@@ -78,6 +88,7 @@
 			timeframes={data.timeframes}
 			{mode}
 			{strategyId}
+			{strategyId2}
 			{exchange}
 			{symbol}
 			{timeframe}
@@ -114,12 +125,37 @@
 			{/if}
 		</div>
 	{:else if ready}
-		<div data-testid="live-chart-header" class="text-sm text-slate-300">
+		<div
+			data-testid="live-chart-header"
+			class="flex flex-wrap items-center gap-x-2 text-sm text-slate-300"
+		>
 			<span class="font-medium">{selectedStrategy?.name ?? strategyId}</span>
-			<span class="text-slate-500"> · {exchange} · {symbol} · {timeframe}</span>
+			<span class="text-slate-500">· {exchange} · {symbol} · {timeframe}</span>
+			{#if selectedStrategy2}
+				<!-- Comparison legend (#34): the second strategy's markers use a distinct colour. -->
+				<span
+					class="inline-flex items-center gap-1 rounded-full border border-slate-700 px-2 py-0.5 text-xs"
+					data-testid="compare-legend"
+				>
+					<span
+						class="inline-block h-2 w-2 rounded-full"
+						style="background-color: {COMPARE_MARKER_COLOR}"
+						aria-hidden="true"
+					></span>
+					vs {selectedStrategy2.name}
+				</span>
+			{/if}
 			<span class="ml-1 font-mono text-xs text-slate-500">{window.from} → {window.to}</span>
 		</div>
-		<LiveChart {strategyId} {exchange} {symbol} {timeframe} from={window.from} to={window.to} />
+		<LiveChart
+			{strategyId}
+			{strategyId2}
+			{exchange}
+			{symbol}
+			{timeframe}
+			from={window.from}
+			to={window.to}
+		/>
 	{:else}
 		<div
 			class="flex min-h-[280px] items-center justify-center rounded-md border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center text-sm"
