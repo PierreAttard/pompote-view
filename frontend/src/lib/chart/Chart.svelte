@@ -36,16 +36,22 @@
 		 * live view uses this to show a decision tooltip (#21).
 		 */
 		onHover?: (info: HoverInfo | null) => void;
+		/**
+		 * Click callback. Fires with the clicked bar `time` + pixel position, or
+		 * `null` when the click misses the data area. Reuses {@link HoverInfo}: the
+		 * live view uses it to open a decision detail panel (#22).
+		 */
+		onSelect?: (info: HoverInfo | null) => void;
 	}
 
-	/** Bar time + pixel position reported on crosshair move. */
+	/** Bar time + pixel position reported on crosshair move / click. */
 	export interface HoverInfo {
 		time: Time;
 		x: number;
 		y: number;
 	}
 
-	let { candles = [], markers = [], overlays = [], dark, onHover }: Props = $props();
+	let { candles = [], markers = [], overlays = [], dark, onHover, onSelect }: Props = $props();
 
 	let container: HTMLDivElement;
 	let chart: IChartApi | undefined;
@@ -153,6 +159,16 @@
 				return;
 			}
 			onHover?.({ time: param.time, x: param.point.x, y: param.point.y });
+		});
+
+		// Report clicks so the live view can open a decision detail panel. Same
+		// payload as hover; `point`/`time` are undefined when the click misses data.
+		chart.subscribeClick((param: MouseEventParams<Time>) => {
+			if (!param.point || param.time === undefined) {
+				onSelect?.(null);
+				return;
+			}
+			onSelect?.({ time: param.time, x: param.point.x, y: param.point.y });
 		});
 
 		// Disposing the chart tears down its ResizeObserver and DOM nodes, so

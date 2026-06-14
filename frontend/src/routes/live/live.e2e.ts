@@ -104,3 +104,55 @@ test('the live chart fetches decision annotations (orders + decisions)', async (
 	await ordersRequest;
 	await decisionsRequest;
 });
+
+test('clicking a decision bar opens the detail panel; Escape closes it', async ({ page }) => {
+	// One decision per candle bucket so any click in the data area resolves.
+	const ORDERS = CANDLES.map((c, i) => ({
+		order_id: `o${i}`,
+		decision_id: `d${i}`,
+		side: i % 2 === 0 ? 'buy' : 'sell',
+		quantity: 1,
+		price: c.c,
+		status: 'filled',
+		created_at: c.ts
+	}));
+	const DECISIONS = CANDLES.map((c, i) => ({
+		decision_id: `d${i}`,
+		session_id: 's1',
+		created_at: c.ts,
+		reason: `decision ${i}`,
+		orders_count: 1,
+		market_context: { rsi: 30 + i }
+	}));
+
+	await page.route('**/api/candles**', (route) =>
+		route.fulfill({ json: CANDLES, headers: { 'content-type': 'application/json' } })
+	);
+	await page.route('**/api/strategies/*/orders**', (route) =>
+		route.fulfill({ json: ORDERS, headers: { 'content-type': 'application/json' } })
+	);
+	await page.route('**/api/strategies/*/decisions**', (route) =>
+		route.fulfill({ json: DECISIONS, headers: { 'content-type': 'application/json' } })
+	);
+	await page.route('**/api/strategies/*/fills**', (route) =>
+		route.fulfill({ json: [], headers: { 'content-type': 'application/json' } })
+	);
+
+	await page.goto('/live?strategy=smoke&exchange=binance&symbol=BTCUSDT&timeframe=1h&preset=24h');
+
+	const selectors = page.getByTestId('live-selectors');
+	if (!(await selectors.isVisible().catch(() => false))) {
+		test.skip(true, 'viz backend not reachable — live selectors did not load');
+	}
+
+	await expect(page.getByTestId('chart').locator('canvas').first()).toBeVisible();
+
+	// Click the chart; the click resolves to a bar, which carries a decision.
+	await page.getByTestId('chart').click();
+	await expect(page.getByTestId('decision-panel')).toBeVisible();
+	await expect(page.getByTestId('panel-reason')).toContainText('decision');
+
+	// Escape closes it (issue #22 acceptance criterion).
+	await page.keyboard.press('Escape');
+	await expect(page.getByTestId('decision-panel')).toHaveCount(0);
+});

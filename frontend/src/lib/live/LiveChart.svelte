@@ -6,12 +6,17 @@
 		buildDecisionLookup,
 		decisionsQueryKey,
 		fetchDecisions,
+		fetchFills,
 		fetchOrders,
+		fillsForOrders,
+		fillsQueryKey,
+		ordersForDecision,
 		ordersQueryKey,
 		ordersToMarkers,
 		type AnnotationParams
 	} from './annotations';
 	import { candlesQueryKey, fetchCandles, type CandlesParams } from './candles';
+	import DecisionPanel from './DecisionPanel.svelte';
 	import DecisionTooltip from './DecisionTooltip.svelte';
 	import { timeframeSeconds } from './depth';
 
@@ -54,6 +59,48 @@
 	// Bucket-aligned lookup so a crosshair landing on a bar resolves to the
 	// decisions whose orders fall in that candle.
 	const lookup = $derived(buildDecisionLookup(orders, decisions, timeframeSeconds(timeframe) ?? 0));
+
+	// Decision detail panel (#22). A click selects a candle bucket; we keep the
+	// bucket key + index (not the decision object) so the panel stays correct when
+	// the underlying queries refetch (live polling, #26).
+	let selected = $state<{ bucket: number; index: number } | null>(null);
+
+	// Fills back the panel's executions table. Fetched lazily — only once a
+	// decision is selected — then cached per window and reused across decisions.
+	const fillsQuery = createQuery(() => ({
+		queryKey: fillsQueryKey(annotationParams),
+		queryFn: () => fetchFills(annotationParams),
+		enabled: strategyId !== '' && selected !== null
+	}));
+	const fills = $derived(fillsQuery.data ?? []);
+
+	const selectedList = $derived(selected ? (lookup.get(selected.bucket) ?? []) : []);
+	const selectedIndex = $derived(
+		selectedList.length === 0 ? 0 : Math.min(selected?.index ?? 0, selectedList.length - 1)
+	);
+	const selectedDecision = $derived(selectedList[selectedIndex] ?? null);
+	const panelOrders = $derived(
+		selectedDecision ? ordersForDecision(orders, selectedDecision.decision_id) : []
+	);
+	const panelFills = $derived(fillsForOrders(fills, panelOrders));
+
+	// Drop a stale selection when its bucket no longer holds decisions (selector
+	// change, or a future refetch that removes them).
+	$effect(() => {
+		if (selected && selectedList.length === 0) selected = null;
+	});
+
+	function selectBucket(info: HoverInfo | null): void {
+		if (!info) return; // click off the data area: leave the panel as-is
+		const list = lookup.get(Number(info.time));
+		if (list && list.length > 0) selected = { bucket: Number(info.time), index: 0 };
+	}
+
+	function stepPanel(delta: number): void {
+		if (!selected || selectedList.length === 0) return;
+		const len = selectedList.length;
+		selected = { bucket: selected.bucket, index: (selectedIndex + delta + len) % len };
+	}
 
 	let containerWidth = $state(0);
 	let hovered = $state<{ decision: LiveDecision; extra: number; x: number; y: number } | null>(
@@ -130,7 +177,7 @@
 		     series; within one selection it stays mounted (preserving zoom/pan for
 		     the live polling to come). -->
 		{#key candlesQueryKey(params).join('|')}
-			<Chart {candles} {markers} onHover={handleHover} />
+			<Chart {candles} {markers} onHover={handleHover} onSelect={selectBucket} />
 		{/key}
 		{#if hovered}
 			<div
@@ -139,6 +186,20 @@
 			>
 				<DecisionTooltip decision={hovered.decision} extra={hovered.extra} />
 			</div>
+		{/if}
+		{#if selectedDecision}
+			<DecisionPanel
+				decision={selectedDecision}
+				orders={panelOrders}
+				fills={panelFills}
+				fillsPending={fillsQuery.isPending}
+				fillsError={fillsQuery.isError}
+				position={selectedIndex + 1}
+				total={selectedList.length}
+				onPrev={() => stepPanel(-1)}
+				onNext={() => stepPanel(1)}
+				onClose={() => (selected = null)}
+			/>
 		{/if}
 	{/if}
 </div>

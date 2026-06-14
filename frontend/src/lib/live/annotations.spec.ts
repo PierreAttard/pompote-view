@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { LiveDecision, Order } from '$lib/api/types';
+import type { LiveDecision, LiveFill, Order } from '$lib/api/types';
 import {
 	bucketStartSeconds,
 	buildDecisionLookup,
 	decisionsQueryKey,
+	fetchFills,
 	fetchOrders,
+	fillsForOrders,
+	fillsQueryKey,
 	indexDecisionsById,
+	ordersForDecision,
 	ordersQueryKey,
 	ordersToMarkers
 } from './annotations';
@@ -19,6 +23,21 @@ function order(overrides: Partial<Order> = {}): Order {
 		quantity: 1,
 		side: 'buy',
 		status: 'filled',
+		...overrides
+	};
+}
+
+function fill(overrides: Partial<LiveFill> = {}): LiveFill {
+	return {
+		fill_id: 'f1',
+		order_id: 'o1',
+		side: 'buy',
+		price: 100,
+		quantity: 1,
+		fee: 0.1,
+		fee_asset: 'USDT',
+		executed_at: '2026-06-01T00:30:01Z',
+		is_paper: true,
 		...overrides
 	};
 }
@@ -93,11 +112,42 @@ describe('buildDecisionLookup', () => {
 	});
 });
 
+describe('ordersForDecision', () => {
+	it('keeps only the orders whose decision_id matches', () => {
+		const result = ordersForDecision(
+			[
+				order({ order_id: 'o1', decision_id: 'd1' }),
+				order({ order_id: 'o2', decision_id: 'd2' }),
+				order({ order_id: 'o3', decision_id: 'd1' })
+			],
+			'd1'
+		);
+		expect(result.map((o) => o.order_id)).toEqual(['o1', 'o3']);
+	});
+});
+
+describe('fillsForOrders', () => {
+	it('keeps only the fills whose order_id is among the given orders', () => {
+		const orders = [order({ order_id: 'o1' }), order({ order_id: 'o3' })];
+		const fills = [
+			fill({ fill_id: 'f1', order_id: 'o1' }),
+			fill({ fill_id: 'f2', order_id: 'o2' }),
+			fill({ fill_id: 'f3', order_id: 'o3' })
+		];
+		expect(fillsForOrders(fills, orders).map((f) => f.fill_id)).toEqual(['f1', 'f3']);
+	});
+
+	it('returns nothing when there are no orders', () => {
+		expect(fillsForOrders([fill()], [])).toEqual([]);
+	});
+});
+
 describe('query keys + fetchers', () => {
 	it('builds distinct query keys per resource and window', () => {
 		const p = { strategyId: 's1', from: 'F', to: 'T' };
 		expect(ordersQueryKey(p)).toEqual(['orders', 's1', 'F', 'T']);
 		expect(decisionsQueryKey(p)).toEqual(['decisions', 's1', 'F', 'T']);
+		expect(fillsQueryKey(p)).toEqual(['fills', 's1', 'F', 'T']);
 	});
 
 	it('fetchOrders hits the same-origin proxy with from/to encoded', async () => {
@@ -112,6 +162,22 @@ describe('query keys + fetchers', () => {
 		);
 		const url = fetchFn.mock.calls[0][0] as string;
 		expect(url).toContain('/api/strategies/abc%20def/orders?');
+		expect(url).toContain('from=2026-06-01');
+		expect(url).toContain('to=2026-06-02');
+	});
+
+	it('fetchFills hits the strategy fills proxy with from/to encoded', async () => {
+		const fetchFn = vi
+			.fn()
+			.mockResolvedValue(
+				new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } })
+			);
+		await fetchFills(
+			{ strategyId: 'abc def', from: '2026-06-01T00:00:00Z', to: '2026-06-02T00:00:00Z' },
+			fetchFn as unknown as typeof fetch
+		);
+		const url = fetchFn.mock.calls[0][0] as string;
+		expect(url).toContain('/api/strategies/abc%20def/fills?');
 		expect(url).toContain('from=2026-06-01');
 		expect(url).toContain('to=2026-06-02');
 	});
