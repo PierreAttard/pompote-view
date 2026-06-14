@@ -559,7 +559,7 @@ export interface components {
              * @description Primary key.
              */
             decision_id: string;
-            /** @description Opaque market-context snapshot (`null` when none was recorded). */
+            /** @description Opaque market-context snapshot (field omitted when none was recorded). */
             market_context?: Record<string, never> | null;
             /**
              * Format: int32
@@ -1278,9 +1278,9 @@ export interface operations {
     get_strategy_decisions: {
         parameters: {
             query: {
-                /** @description Inclusive lower bound on `executed_at` (RFC3339). */
+                /** @description Inclusive lower bound on the wall-clock window (RFC3339). */
                 from: string;
-                /** @description Exclusive upper bound on `executed_at` (RFC3339). Defaults to `Clock::now()`. */
+                /** @description Exclusive upper bound on the wall-clock window (RFC3339). Defaults to `Clock::now()`. */
                 to?: string | null;
                 /** @description Row cap (defaults to [`MAX_ORDER_ROWS`], rejected above it). */
                 limit?: number | null;
@@ -1342,9 +1342,9 @@ export interface operations {
     get_strategy_fills: {
         parameters: {
             query: {
-                /** @description Inclusive lower bound on `executed_at` (RFC3339). */
+                /** @description Inclusive lower bound on the wall-clock window (RFC3339). */
                 from: string;
-                /** @description Exclusive upper bound on `executed_at` (RFC3339). Defaults to `Clock::now()`. */
+                /** @description Exclusive upper bound on the wall-clock window (RFC3339). Defaults to `Clock::now()`. */
                 to?: string | null;
                 /** @description Row cap (defaults to [`MAX_ORDER_ROWS`], rejected above it). */
                 limit?: number | null;

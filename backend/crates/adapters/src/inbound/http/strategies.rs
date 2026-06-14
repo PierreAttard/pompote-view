@@ -221,12 +221,14 @@ impl From<StrategyError> for StrategyApiError {
     }
 }
 
-/// Raw query parameters for the fills series.
+/// Raw query parameters shared by the windowed strategy series (fills and
+/// decisions). The wall-clock column the bounds apply to depends on the
+/// endpoint: `executed_at` for fills, `created_at` for decisions.
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
-pub struct FillQueryParams {
-    /// Inclusive lower bound on `executed_at` (RFC3339).
+pub struct SeriesQueryParams {
+    /// Inclusive lower bound on the wall-clock window (RFC3339).
     pub from: DateTime<Utc>,
-    /// Exclusive upper bound on `executed_at` (RFC3339). Defaults to `Clock::now()`.
+    /// Exclusive upper bound on the wall-clock window (RFC3339). Defaults to `Clock::now()`.
     #[serde(default)]
     pub to: Option<DateTime<Utc>>,
     /// Row cap (defaults to [`MAX_ORDER_ROWS`], rejected above it).
@@ -282,7 +284,7 @@ pub async fn list_strategies(
     tag = "monitoring",
     params(
         ("id" = Uuid, Path, description = "Strategy identifier"),
-        FillQueryParams,
+        SeriesQueryParams,
     ),
     responses(
         (status = 200, description = "Live fills for the strategy on the window, ordered by ascending `executed_at`.", body = [LiveFillDto]),
@@ -296,7 +298,7 @@ pub async fn list_strategies(
 pub async fn get_strategy_fills(
     State(state): State<AppState>,
     Path(strategy_id): Path<Uuid>,
-    Query(params): Query<FillQueryParams>,
+    Query(params): Query<SeriesQueryParams>,
 ) -> Result<Json<Vec<LiveFillDto>>, StrategyApiError> {
     let fills = state
         .get_strategy_fills
@@ -323,7 +325,7 @@ pub struct LiveDecisionDto {
     pub reason: String,
     /// Number of orders emitted by this decision.
     pub orders_count: i32,
-    /// Opaque market-context snapshot (`null` when none was recorded).
+    /// Opaque market-context snapshot (field omitted when none was recorded).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<Object>)]
     pub market_context: Option<Value>,
@@ -349,7 +351,7 @@ impl From<domain::decision::LiveDecision> for LiveDecisionDto {
     tag = "monitoring",
     params(
         ("id" = Uuid, Path, description = "Strategy identifier"),
-        FillQueryParams,
+        SeriesQueryParams,
     ),
     responses(
         (status = 200, description = "Live decisions (with market context) for the strategy on the window, ordered by ascending `created_at`.", body = [LiveDecisionDto]),
@@ -363,7 +365,7 @@ impl From<domain::decision::LiveDecision> for LiveDecisionDto {
 pub async fn get_strategy_decisions(
     State(state): State<AppState>,
     Path(strategy_id): Path<Uuid>,
-    Query(params): Query<FillQueryParams>,
+    Query(params): Query<SeriesQueryParams>,
 ) -> Result<Json<Vec<LiveDecisionDto>>, StrategyApiError> {
     let decisions = state
         .get_strategy_decisions

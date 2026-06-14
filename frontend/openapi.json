@@ -886,7 +886,7 @@
           {
             "name": "from",
             "in": "query",
-            "description": "Inclusive lower bound on `executed_at` (RFC3339).",
+            "description": "Inclusive lower bound on the wall-clock window (RFC3339).",
             "required": true,
             "schema": {
               "type": "string",
@@ -896,7 +896,7 @@
           {
             "name": "to",
             "in": "query",
-            "description": "Exclusive upper bound on `executed_at` (RFC3339). Defaults to `Clock::now()`.",
+            "description": "Exclusive upper bound on the wall-clock window (RFC3339). Defaults to `Clock::now()`.",
             "required": false,
             "schema": {
               "type": [
@@ -996,7 +996,7 @@
           {
             "name": "from",
             "in": "query",
-            "description": "Inclusive lower bound on `executed_at` (RFC3339).",
+            "description": "Inclusive lower bound on the wall-clock window (RFC3339).",
             "required": true,
             "schema": {
               "type": "string",
@@ -1006,7 +1006,7 @@
           {
             "name": "to",
             "in": "query",
-            "description": "Exclusive upper bound on `executed_at` (RFC3339). Defaults to `Clock::now()`.",
+            "description": "Exclusive upper bound on the wall-clock window (RFC3339). Defaults to `Clock::now()`.",
             "required": false,
             "schema": {
               "type": [
@@ -1745,7 +1745,7 @@
               "object",
               "null"
             ],
-            "description": "Opaque market-context snapshot (`null` when none was recorded)."
+            "description": "Opaque market-context snapshot (field omitted when none was recorded)."
           },
           "orders_count": {
             "type": "integer",
