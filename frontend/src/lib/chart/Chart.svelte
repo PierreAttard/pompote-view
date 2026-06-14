@@ -188,7 +188,9 @@
 				delete subchartSeries[id];
 			}
 		}
-		// Trim panes left empty after a removal (indices beyond the ones in use).
+		// Trim panes left empty after a removal. Safe top-down: the move/remove
+		// pass above has already compacted every surviving series into panes
+		// `[1..input.length]`, so any pane with index > input.length is now empty.
 		const panes = chart.panes();
 		for (let idx = panes.length - 1; idx > input.length; idx--) {
 			chart.removePane(idx);

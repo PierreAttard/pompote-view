@@ -74,7 +74,7 @@ describe('LiveChart.svelte', () => {
 		await expect.poll(() => chart.element().querySelectorAll('canvas').length).toBeGreaterThan(0);
 	});
 
-	it('exposes indicator toggles from decision snapshots and toggles a sub-chart', async () => {
+	it('exposes indicator toggles and reconciles sub-chart panes when toggling', async () => {
 		candlesResult.current = { isPending: false, isError: false, data: candles(), refetch: vi.fn() };
 		decisionsData.current = [
 			{
@@ -84,23 +84,33 @@ describe('LiveChart.svelte', () => {
 				reason: 'r',
 				orders_count: 0,
 				// `market_context` is opaque JSONB in the generated types; cast the sample.
-				market_context: { rsi: 28 } as unknown as LiveDecision['market_context']
+				market_context: { adx: 30, atr: 1.2, rsi: 28 } as unknown as LiveDecision['market_context']
 			}
 		];
 		render(LiveChart, props);
 
 		await expect.element(page.getByTestId('live-indicator-toggles')).toBeInTheDocument();
+		const adx = page.getByRole('button', { name: /adx/i });
+		const atr = page.getByRole('button', { name: /atr/i });
 		const rsi = page.getByRole('button', { name: /rsi/i });
-		await expect.element(rsi).toHaveAttribute('aria-pressed', 'false');
+		await expect.element(adx).toHaveAttribute('aria-pressed', 'false');
 
-		// Enabling adds a sub-chart pane (must not throw); disabling removes it.
+		// Enable all three → three sub-chart panes (must not throw).
+		await adx.click();
+		await atr.click();
 		await rsi.click();
-		await expect.element(rsi).toHaveAttribute('aria-pressed', 'true');
+		await expect.element(atr).toHaveAttribute('aria-pressed', 'true');
 		await expect
 			.poll(() => page.getByTestId('chart').element().querySelectorAll('canvas').length)
 			.toBeGreaterThan(0);
 
-		await rsi.click();
-		await expect.element(rsi).toHaveAttribute('aria-pressed', 'false');
+		// Disable the middle one → its pane is trimmed and the trailing one moves up.
+		await atr.click();
+		await expect.element(atr).toHaveAttribute('aria-pressed', 'false');
+		await expect.element(adx).toHaveAttribute('aria-pressed', 'true');
+		await expect.element(rsi).toHaveAttribute('aria-pressed', 'true');
+		await expect
+			.poll(() => page.getByTestId('chart').element().querySelectorAll('canvas').length)
+			.toBeGreaterThan(0);
 	});
 });
