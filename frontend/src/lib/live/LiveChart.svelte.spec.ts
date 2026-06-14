@@ -60,18 +60,20 @@ describe('LiveChart.svelte', () => {
 		expect(refetch).toHaveBeenCalledOnce();
 	});
 
-	it('shows an empty state when the window has no candles', async () => {
+	it('shows an empty state (and no volume profile) when the window has no candles', async () => {
 		candlesResult.current = { isPending: false, isError: false, data: [], refetch: vi.fn() };
 		render(LiveChart, props);
 		await expect.element(page.getByTestId('live-chart-empty')).toBeInTheDocument();
+		await expect.element(page.getByTestId('volume-profile')).not.toBeInTheDocument();
 	});
 
-	it('renders the chart when candles are available', async () => {
+	it('renders the chart and the volume profile when candles are available', async () => {
 		candlesResult.current = { isPending: false, isError: false, data: candles(), refetch: vi.fn() };
 		render(LiveChart, props);
 		const chart = page.getByTestId('chart');
 		await expect.element(chart).toBeInTheDocument();
 		await expect.poll(() => chart.element().querySelectorAll('canvas').length).toBeGreaterThan(0);
+		await expect.element(page.getByTestId('volume-profile')).toBeInTheDocument();
 	});
 
 	it('exposes indicator toggles and reconciles sub-chart panes when toggling', async () => {
