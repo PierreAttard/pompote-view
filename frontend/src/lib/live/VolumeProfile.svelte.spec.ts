@@ -21,6 +21,9 @@ describe('VolumeProfile.svelte', () => {
 		await expect.element(page.getByTestId('vp-poc')).toHaveTextContent('POC 1.5');
 		await expect.element(page.getByTestId('vp-value-area')).toHaveTextContent(/VA\s*0\s*[–-]\s*4/);
 		await expect.poll(() => page.getByTestId('vp-bucket').elements().length).toBe(5);
+		// HVN/LVN are identifiable beyond colour, via the bucket title (a11y). The
+		// valley bucket (index 2) is the lone LVN of this distribution.
+		await expect.element(page.getByTitle(/LVN/)).toBeInTheDocument();
 	});
 
 	it('exposes a descriptive aria-label summarising the POC and value area', async () => {

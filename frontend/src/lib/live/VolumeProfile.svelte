@@ -27,6 +27,20 @@
 	const width = (volume: number) =>
 		profile.maxVolume > 0 ? (volume / profile.maxVolume) * 100 : 0;
 
+	// Node type for a bucket — surfaced as text (title) so HVN/LVN/POC are not
+	// conveyed by bar colour alone (a11y).
+	function nodeLabel(i: number): string {
+		if (i === profile.pocIndex) return 'POC';
+		if (profile.hvnIndices.includes(i)) return 'HVN';
+		if (profile.lvnIndices.includes(i)) return 'LVN';
+		return '';
+	}
+	function bucketTitle(i: number): string {
+		const b = profile.buckets[i];
+		const node = nodeLabel(i);
+		return `${formatNumber(b.price)} · vol ${formatNumber(b.volume)}${node ? ` · ${node}` : ''}`;
+	}
+
 	const pocPrice = $derived(profile.pocIndex >= 0 ? profile.buckets[profile.pocIndex].price : null);
 	const vaLowPrice = $derived(
 		profile.valueAreaLow >= 0 ? profile.buckets[profile.valueAreaLow].low : null
@@ -41,7 +55,7 @@
 	data-testid="volume-profile"
 	role="img"
 	aria-label={pocPrice !== null
-		? `Volume profile. POC ${formatNumber(pocPrice)}, value area ${formatNumber(vaLowPrice)} à ${formatNumber(vaHighPrice)}.`
+		? `Volume profile. POC ${formatNumber(pocPrice)}, value area ${formatNumber(vaLowPrice)} à ${formatNumber(vaHighPrice)}, ${profile.hvnIndices.length} HVN, ${profile.lvnIndices.length} LVN.`
 		: 'Volume profile (aucune donnée).'}
 >
 	<header class="border-b border-slate-800 px-2 py-1 font-semibold text-slate-300">
@@ -57,7 +71,7 @@
 			{#each rows as { bucket, i } (i)}
 				<div
 					class="relative flex-1 {inValueArea(i) ? 'bg-sky-500/10' : ''}"
-					title="{formatNumber(bucket.price)} · vol {formatNumber(bucket.volume)}"
+					title={bucketTitle(i)}
 					data-testid="vp-bucket"
 				>
 					<div
