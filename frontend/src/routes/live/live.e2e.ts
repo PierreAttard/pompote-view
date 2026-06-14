@@ -251,3 +251,22 @@ test('polls every 10s and grows the chart with a new candle (#26)', async ({ pag
 	// The poll was incremental: it asked for candles from the last known ts.
 	expect(fromParams[1]).toBe(CANDLES[CANDLES.length - 1].ts);
 });
+
+test('shows a freshness indicator reflecting the last update (#27)', async ({ page }) => {
+	await page.route('**/api/candles**', (route) =>
+		route.fulfill({ json: CANDLES, headers: { 'content-type': 'application/json' } })
+	);
+
+	await page.goto('/live?strategy=smoke&exchange=binance&symbol=BTCUSDT&timeframe=1h&preset=24h');
+
+	const selectors = page.getByTestId('live-selectors');
+	if (!(await selectors.isVisible().catch(() => false))) {
+		test.skip(true, 'viz backend not reachable — live selectors did not load');
+	}
+
+	await expect(page.getByTestId('chart').locator('canvas').first()).toBeVisible();
+	const freshness = page.getByTestId('freshness-indicator');
+	await expect(freshness).toBeVisible();
+	// A fetch just succeeded, so the badge reads as fresh.
+	await expect(freshness).toHaveAttribute('data-state', 'fresh');
+});

@@ -10,7 +10,13 @@ import type { Candle, LiveDecision } from '$lib/api/types';
 // the indicator toggles (#24). The mappers are covered by `annotations.spec.ts` /
 // `indicators.spec.ts`.
 const candlesResult = vi.hoisted(() => ({
-	current: {} as { isPending: boolean; isError: boolean; data?: Candle[]; refetch: () => void }
+	current: {} as {
+		isPending: boolean;
+		isError: boolean;
+		data?: Candle[];
+		refetch: () => void;
+		dataUpdatedAt?: number;
+	}
 }));
 const decisionsData = vi.hoisted(() => ({ current: [] as LiveDecision[] }));
 
@@ -70,13 +76,21 @@ describe('LiveChart.svelte', () => {
 		await expect.element(page.getByTestId('volume-profile')).not.toBeInTheDocument();
 	});
 
-	it('renders the chart and the volume profile when candles are available', async () => {
-		candlesResult.current = { isPending: false, isError: false, data: candles(), refetch: vi.fn() };
+	it('renders the chart, the volume profile and the freshness badge when candles are available', async () => {
+		candlesResult.current = {
+			isPending: false,
+			isError: false,
+			data: candles(),
+			refetch: vi.fn(),
+			dataUpdatedAt: Date.now()
+		};
 		render(LiveChart, props);
 		const chart = page.getByTestId('chart');
 		await expect.element(chart).toBeInTheDocument();
 		await expect.poll(() => chart.element().querySelectorAll('canvas').length).toBeGreaterThan(0);
 		await expect.element(page.getByTestId('volume-profile')).toBeInTheDocument();
+		// Freshness indicator (#27) appears once there is a successful update.
+		await expect.element(page.getByTestId('freshness-indicator')).toBeInTheDocument();
 	});
 
 	it('exposes indicator toggles and reconciles sub-chart panes when toggling', async () => {
