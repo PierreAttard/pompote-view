@@ -33,3 +33,17 @@ export function formatNumber(value: number | null | undefined): string {
 	if (Number.isInteger(value)) return String(value);
 	return String(Number(value.toFixed(8)));
 }
+
+/**
+ * Formats an elapsed duration (ms) as a short French "il y a …" label for the
+ * freshness indicator (#27): seconds under a minute, then minutes, then hours.
+ * Negative/sub-second ages read "à l'instant".
+ */
+export function formatAge(ms: number): string {
+	const s = Math.floor(ms / 1000);
+	if (s < 1) return "à l'instant";
+	if (s < 60) return `il y a ${s} s`;
+	const m = Math.floor(s / 60);
+	if (m < 60) return `il y a ${m} min`;
+	return `il y a ${Math.floor(m / 60)} h`;
+}

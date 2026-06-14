@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatNumber, formatTimestamp } from './format';
+import { formatAge, formatNumber, formatTimestamp } from './format';
 
 describe('formatTimestamp', () => {
 	it('formats an RFC3339 timestamp in UTC (no local-time shift)', () => {
@@ -35,5 +35,21 @@ describe('formatNumber', () => {
 		expect(formatNumber(undefined)).toBe('—');
 		expect(formatNumber(Number.NaN)).toBe('—');
 		expect(formatNumber(Number.POSITIVE_INFINITY)).toBe('—');
+	});
+});
+
+describe('formatAge', () => {
+	it('reads "à l\'instant" under a second (and for negative ages)', () => {
+		expect(formatAge(0)).toBe("à l'instant");
+		expect(formatAge(900)).toBe("à l'instant");
+		expect(formatAge(-1000)).toBe("à l'instant");
+	});
+
+	it('formats seconds, minutes and hours', () => {
+		expect(formatAge(5_000)).toBe('il y a 5 s');
+		expect(formatAge(59_000)).toBe('il y a 59 s');
+		expect(formatAge(60_000)).toBe('il y a 1 min');
+		expect(formatAge(90_000)).toBe('il y a 1 min');
+		expect(formatAge(3_600_000)).toBe('il y a 1 h');
 	});
 });

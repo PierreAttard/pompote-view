@@ -26,6 +26,7 @@
 	} from './candles';
 	import DecisionPanel from './DecisionPanel.svelte';
 	import DecisionTooltip from './DecisionTooltip.svelte';
+	import FreshnessIndicator from './FreshnessIndicator.svelte';
 	import { timeframeSeconds } from './depth';
 	import { decisionsToIndicators } from './indicators';
 	import VolumeProfile from './VolumeProfile.svelte';
@@ -238,6 +239,15 @@
 						onSelect={selectBucket}
 					/>
 				{/key}
+				<!-- Freshness badge (#27): its 1s ticker lives in the child, so it never
+				     re-renders the chart. errorUpdatedAt > dataUpdatedAt ⇒ last poll failed. -->
+				<div class="pointer-events-none absolute top-2 left-2 z-10">
+					<FreshnessIndicator
+						updatedAt={candlesQuery.dataUpdatedAt ?? 0}
+						errored={(candlesQuery.errorUpdatedAt ?? 0) > (candlesQuery.dataUpdatedAt ?? 0)}
+						fetching={candlesQuery.isFetching ?? false}
+					/>
+				</div>
 				{#if hovered}
 					<div
 						class="pointer-events-none absolute z-10"
