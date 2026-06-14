@@ -2,6 +2,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import type { LiveDecision } from '$lib/api/types';
 	import Chart, { type HoverInfo } from '$lib/chart/Chart.svelte';
+	import IndicatorToggles from '$lib/chart/IndicatorToggles.svelte';
 	import {
 		buildDecisionLookup,
 		decisionsQueryKey,
@@ -19,6 +20,7 @@
 	import DecisionPanel from './DecisionPanel.svelte';
 	import DecisionTooltip from './DecisionTooltip.svelte';
 	import { timeframeSeconds } from './depth';
+	import { decisionsToIndicators } from './indicators';
 
 	interface Props extends CandlesParams {
 		/** Strategy whose orders/decisions annotate the chart. */
@@ -59,6 +61,13 @@
 	// Bucket-aligned lookup so a crosshair landing on a bar resolves to the
 	// decisions whose orders fall in that candle.
 	const lookup = $derived(buildDecisionLookup(orders, decisions, timeframeSeconds(timeframe) ?? 0));
+
+	// Indicator sub-charts (#24): one toggleable line per numeric snapshot field,
+	// extracted generically from the decisions. Off by default — the user enables
+	// the ones they want; only enabled indicators get a pane (keeps it light).
+	const indicators = $derived(decisionsToIndicators(decisions));
+	let indicatorVisible = $state<Record<string, boolean>>({});
+	const enabledSubcharts = $derived(indicators.filter((ind) => indicatorVisible[ind.id]));
 
 	// Decision detail panel (#22). A click selects a candle bucket; we keep the
 	// bucket key + index (not the decision object) so the panel stays correct when
@@ -131,75 +140,90 @@
 	const tooltipTop = $derived(hovered ? hovered.y + 12 : 0);
 </script>
 
-<div
-	class="relative min-h-[280px] w-full overflow-hidden rounded-md border border-slate-800 bg-slate-900/60"
-	data-testid="live-chart"
-	bind:clientWidth={containerWidth}
->
-	{#if candlesQuery.isError}
-		<div
-			class="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 p-6 text-center"
-			data-testid="live-chart-error"
-		>
-			<p class="text-sm text-rose-300">
-				Impossible de charger les bougies pour {symbol} ({exchange}).
-			</p>
-			<button
-				type="button"
-				data-testid="live-chart-retry"
-				onclick={() => candlesQuery.refetch()}
-				class="rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 transition-colors hover:bg-slate-700"
-			>
-				Réessayer
-			</button>
+<div class="space-y-2">
+	{#if indicators.length > 0}
+		<!-- Indicator sub-chart selector (#24): toggles which snapshot indicators
+		     get their own pane below the price chart. -->
+		<div data-testid="live-indicator-toggles">
+			<IndicatorToggles {indicators} bind:visible={indicatorVisible} />
 		</div>
-	{:else if candlesQuery.isPending}
-		<div
-			class="flex h-full min-h-[280px] items-center justify-center p-6"
-			data-testid="live-chart-loading"
-			role="status"
-			aria-live="polite"
-		>
+	{/if}
+	<div
+		class="relative min-h-[280px] w-full overflow-hidden rounded-md border border-slate-800 bg-slate-900/60"
+		data-testid="live-chart"
+		bind:clientWidth={containerWidth}
+	>
+		{#if candlesQuery.isError}
 			<div
-				class="h-6 w-6 animate-spin rounded-full border-2 border-slate-600 border-t-sky-400"
-			></div>
-			<span class="ml-3 text-sm text-slate-400">Chargement des bougies…</span>
-		</div>
-	{:else if candles.length === 0}
-		<div
-			class="flex h-full min-h-[280px] items-center justify-center p-6 text-center text-sm text-slate-400"
-			data-testid="live-chart-empty"
-		>
-			Aucune bougie sur cette plage pour {symbol} ({exchange}).
-		</div>
-	{:else}
-		<!-- Remount the chart on a new selection so the viewport refits to the new
+				class="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 p-6 text-center"
+				data-testid="live-chart-error"
+			>
+				<p class="text-sm text-rose-300">
+					Impossible de charger les bougies pour {symbol} ({exchange}).
+				</p>
+				<button
+					type="button"
+					data-testid="live-chart-retry"
+					onclick={() => candlesQuery.refetch()}
+					class="rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 transition-colors hover:bg-slate-700"
+				>
+					Réessayer
+				</button>
+			</div>
+		{:else if candlesQuery.isPending}
+			<div
+				class="flex h-full min-h-[280px] items-center justify-center p-6"
+				data-testid="live-chart-loading"
+				role="status"
+				aria-live="polite"
+			>
+				<div
+					class="h-6 w-6 animate-spin rounded-full border-2 border-slate-600 border-t-sky-400"
+				></div>
+				<span class="ml-3 text-sm text-slate-400">Chargement des bougies…</span>
+			</div>
+		{:else if candles.length === 0}
+			<div
+				class="flex h-full min-h-[280px] items-center justify-center p-6 text-center text-sm text-slate-400"
+				data-testid="live-chart-empty"
+			>
+				Aucune bougie sur cette plage pour {symbol} ({exchange}).
+			</div>
+		{:else}
+			<!-- Remount the chart on a new selection so the viewport refits to the new
 		     series; within one selection it stays mounted (preserving zoom/pan for
 		     the live polling to come). -->
-		{#key candlesQueryKey(params).join('|')}
-			<Chart {candles} {markers} onHover={handleHover} onSelect={selectBucket} />
-		{/key}
-		{#if hovered}
-			<div
-				class="pointer-events-none absolute z-10"
-				style="left: {tooltipLeft}px; top: {tooltipTop}px;"
-			>
-				<DecisionTooltip decision={hovered.decision} extra={hovered.extra} />
-			</div>
+			{#key candlesQueryKey(params).join('|')}
+				<Chart
+					{candles}
+					{markers}
+					subcharts={enabledSubcharts}
+					onHover={handleHover}
+					onSelect={selectBucket}
+				/>
+			{/key}
+			{#if hovered}
+				<div
+					class="pointer-events-none absolute z-10"
+					style="left: {tooltipLeft}px; top: {tooltipTop}px;"
+				>
+					<DecisionTooltip decision={hovered.decision} extra={hovered.extra} />
+				</div>
+			{/if}
+			{#if selectedDecision}
+				<DecisionPanel
+					decision={selectedDecision}
+					orders={panelOrders}
+					fills={panelFills}
+					fillsPending={fillsQuery.isPending}
+					fillsError={fillsQuery.isError}
+					position={selectedIndex + 1}
+					total={selectedList.length}
+					onPrev={() => stepPanel(-1)}
+					onNext={() => stepPanel(1)}
+					onClose={() => (selected = null)}
+				/>
+			{/if}
 		{/if}
-		{#if selectedDecision}
-			<DecisionPanel
-				decision={selectedDecision}
-				orders={panelOrders}
-				fills={panelFills}
-				fillsPending={fillsQuery.isPending}
-				fillsError={fillsQuery.isError}
-				position={selectedIndex + 1}
-				total={selectedList.length}
-				onPrev={() => stepPanel(-1)}
-				onNext={() => stepPanel(1)}
-				onClose={() => (selected = null)}
-			/>
-		{/if}
-	{/if}
+	</div>
 </div>

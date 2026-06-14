@@ -1,24 +1,32 @@
 import { page } from 'vitest/browser';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import LiveChart from './LiveChart.svelte';
-import type { Candle } from '$lib/api/types';
+import type { Candle, LiveDecision } from '$lib/api/types';
 
-// Drive the candles render states by stubbing its query result. Orders/decisions
+// Drive the candles render states by stubbing its query result. Orders/fills
 // queries are best-effort annotations; they return empty data here so the focus
-// stays on the candles-driven states. The query wiring/mappers are covered by
-// `candles.spec.ts` / `annotations.spec.ts`.
+// stays on the candles-driven states. Decisions are overridable so we can drive
+// the indicator toggles (#24). The mappers are covered by `annotations.spec.ts` /
+// `indicators.spec.ts`.
 const candlesResult = vi.hoisted(() => ({
 	current: {} as { isPending: boolean; isError: boolean; data?: Candle[]; refetch: () => void }
 }));
+const decisionsData = vi.hoisted(() => ({ current: [] as LiveDecision[] }));
 
 vi.mock('@tanstack/svelte-query', () => ({
 	createQuery: (opts: () => { queryKey: unknown[] }) => {
 		const resource = opts().queryKey[0];
 		if (resource === 'candles') return candlesResult.current;
+		if (resource === 'decisions')
+			return { isPending: false, isError: false, data: decisionsData.current, refetch: vi.fn() };
 		return { isPending: false, isError: false, data: [], refetch: vi.fn() };
 	}
 }));
+
+beforeEach(() => {
+	decisionsData.current = [];
+});
 
 const props = {
 	strategyId: 'strat-1',
@@ -64,5 +72,45 @@ describe('LiveChart.svelte', () => {
 		const chart = page.getByTestId('chart');
 		await expect.element(chart).toBeInTheDocument();
 		await expect.poll(() => chart.element().querySelectorAll('canvas').length).toBeGreaterThan(0);
+	});
+
+	it('exposes indicator toggles and reconciles sub-chart panes when toggling', async () => {
+		candlesResult.current = { isPending: false, isError: false, data: candles(), refetch: vi.fn() };
+		decisionsData.current = [
+			{
+				decision_id: 'd1',
+				session_id: 's1',
+				created_at: '2026-06-01T00:00:00Z',
+				reason: 'r',
+				orders_count: 0,
+				// `market_context` is opaque JSONB in the generated types; cast the sample.
+				market_context: { adx: 30, atr: 1.2, rsi: 28 } as unknown as LiveDecision['market_context']
+			}
+		];
+		render(LiveChart, props);
+
+		await expect.element(page.getByTestId('live-indicator-toggles')).toBeInTheDocument();
+		const adx = page.getByRole('button', { name: /adx/i });
+		const atr = page.getByRole('button', { name: /atr/i });
+		const rsi = page.getByRole('button', { name: /rsi/i });
+		await expect.element(adx).toHaveAttribute('aria-pressed', 'false');
+
+		// Enable all three → three sub-chart panes (must not throw).
+		await adx.click();
+		await atr.click();
+		await rsi.click();
+		await expect.element(atr).toHaveAttribute('aria-pressed', 'true');
+		await expect
+			.poll(() => page.getByTestId('chart').element().querySelectorAll('canvas').length)
+			.toBeGreaterThan(0);
+
+		// Disable the middle one → its pane is trimmed and the trailing one moves up.
+		await atr.click();
+		await expect.element(atr).toHaveAttribute('aria-pressed', 'false');
+		await expect.element(adx).toHaveAttribute('aria-pressed', 'true');
+		await expect.element(rsi).toHaveAttribute('aria-pressed', 'true');
+		await expect
+			.poll(() => page.getByTestId('chart').element().querySelectorAll('canvas').length)
+			.toBeGreaterThan(0);
 	});
 });

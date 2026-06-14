@@ -28,6 +28,12 @@
 		markers?: ChartMarker[];
 		/** Indicator lines (SMA/EMA/Bollinger…) drawn over the price series. */
 		overlays?: ChartOverlay[];
+		/**
+		 * Indicator lines drawn in their own stacked panes below the price, each
+		 * with its own scale (RSI/ADX/ATR/DMI…). The time scale is shared, so
+		 * zoom/pan stays synchronised with the price pane (#24).
+		 */
+		subcharts?: ChartOverlay[];
 		/** Override the system colour-scheme preference (mostly for tests). */
 		dark?: boolean;
 		/**
@@ -51,7 +57,15 @@
 		y: number;
 	}
 
-	let { candles = [], markers = [], overlays = [], dark, onHover, onSelect }: Props = $props();
+	let {
+		candles = [],
+		markers = [],
+		overlays = [],
+		subcharts = [],
+		dark,
+		onHover,
+		onSelect
+	}: Props = $props();
 
 	let container: HTMLDivElement;
 	let chart: IChartApi | undefined;
@@ -60,6 +74,9 @@
 	// Overlay line series kept by id so we can add/update/remove incrementally.
 	// A plain record (not a Map) keeps `svelte/prefer-svelte-reactivity` happy.
 	let overlaySeries: Record<string, ISeriesApi<'Line'>> = {};
+	// Sub-chart line series kept by id, each with the pane index it lives in, so
+	// we can add/update/move/remove them and trim emptied panes incrementally.
+	let subchartSeries: Record<string, { series: ISeriesApi<'Line'>; pane: number }> = {};
 	// Fit the viewport only on the first load; later updates (e.g. live polling
 	// in #18) must not clobber the user's zoom/pan.
 	let fitted = false;
@@ -128,6 +145,64 @@
 		}
 	}
 
+	/**
+	 * Reconcile the sub-chart line series with the `subcharts` prop. Each enabled
+	 * indicator gets its own pane (price is pane 0, indicators are panes 1..N in
+	 * order): new ids are added, existing ones updated and moved to their target
+	 * pane, vanished ones removed, and emptied trailing panes trimmed. The price
+	 * pane is given a larger stretch factor so the sub-charts stay compact.
+	 * No-op until the chart exists.
+	 */
+	function renderSubcharts(input: ChartOverlay[]): void {
+		if (!chart) return;
+		const seen = input.map((o) => o.id);
+		input.forEach((overlay, i) => {
+			const pane = i + 1; // pane 0 is the price series
+			let entry = subchartSeries[overlay.id];
+			if (!entry) {
+				const line = chart!.addSeries(
+					LineSeries,
+					{
+						color: overlay.color,
+						lineWidth: 2,
+						title: overlay.title ?? overlay.id,
+						priceLineVisible: false,
+						lastValueVisible: false
+					},
+					pane
+				);
+				entry = { series: line, pane };
+				subchartSeries[overlay.id] = entry;
+			} else {
+				entry.series.applyOptions({ color: overlay.color, title: overlay.title ?? overlay.id });
+				if (entry.pane !== pane) {
+					entry.series.moveToPane(pane);
+					entry.pane = pane;
+				}
+			}
+			entry.series.setData(toLineData(overlay.data));
+		});
+		for (const id of Object.keys(subchartSeries)) {
+			if (!seen.includes(id)) {
+				chart.removeSeries(subchartSeries[id].series);
+				delete subchartSeries[id];
+			}
+		}
+		// Trim panes left empty after a removal. Safe top-down: the move/remove
+		// pass above has already compacted every surviving series into panes
+		// `[1..input.length]`, so any pane with index > input.length is now empty.
+		const panes = chart.panes();
+		for (let idx = panes.length - 1; idx > input.length; idx--) {
+			chart.removePane(idx);
+		}
+		// Keep the price pane dominant when sub-charts are present.
+		if (input.length > 0) {
+			const live = chart.panes();
+			live[0]?.setStretchFactor(3);
+			for (let idx = 1; idx < live.length; idx++) live[idx]?.setStretchFactor(1);
+		}
+	}
+
 	onMount(() => {
 		const palette = isDark()
 			? { background: '#0f172a', text: '#cbd5e1', grid: '#1e293b' }
@@ -150,6 +225,7 @@
 		render(candles);
 		renderMarkers(markers);
 		renderOverlays(overlays);
+		renderSubcharts(subcharts);
 
 		// Report crosshair hover so the live view can show a decision tooltip.
 		// `point`/`time` are undefined once the cursor leaves the data area.
@@ -179,6 +255,7 @@
 			series = undefined;
 			markersPlugin = undefined;
 			overlaySeries = {};
+			subchartSeries = {};
 			fitted = false;
 		};
 	});
@@ -196,6 +273,11 @@
 	// Reconcile overlay lines whenever `overlays` changes.
 	$effect(() => {
 		renderOverlays(overlays);
+	});
+
+	// Reconcile sub-chart panes whenever `subcharts` changes.
+	$effect(() => {
+		renderSubcharts(subcharts);
 	});
 </script>
 
