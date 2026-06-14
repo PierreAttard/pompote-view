@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import Chart from '$lib/chart/Chart.svelte';
+	import IndicatorToggles from '$lib/chart/IndicatorToggles.svelte';
 	import BacktestRunSummaryPanel from '$lib/components/BacktestRunSummaryPanel.svelte';
 	import BiasBanner from '$lib/components/BiasBanner.svelte';
 	import type { PageData } from './$types';
@@ -9,6 +11,14 @@
 	const run = $derived(data.detail.run);
 	const degraded = $derived(data.source === 'none');
 	const snapshot = $derived(JSON.stringify(data.detail.config_snapshot, null, 2));
+
+	// Indicator overlays start hidden so the price action stays readable; the
+	// user opts in per indicator. Visibility is keyed by overlay id.
+	let visible = $state<Record<string, boolean>>({});
+	const indicators = $derived(
+		data.overlays.map((o) => ({ id: o.id, title: o.title, color: o.color }))
+	);
+	const shownOverlays = $derived(data.overlays.filter((o) => visible[o.id]));
 </script>
 
 <svelte:head>
@@ -29,28 +39,48 @@
 		<BacktestRunSummaryPanel {run} />
 	</div>
 
-	<!-- Chart zone. The OHLC chart (Lot 4), decision markers (Lot 5) and
-	     indicator overlays (Lot 6) plug in here; this view ships the
-	     source-aware container + the graceful degradation. -->
-	<div
-		class="flex min-h-[280px] items-center justify-center rounded-md border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center text-sm"
-		data-testid="chart-zone"
-	>
+	<!-- Chart zone: OHLC background (Lot 4) + buy/sell markers (Lot 5) +
+	     indicator overlays (Lot 6), with a clean timeline-only fallback when
+	     `candles_5s` does not cover the run window (source = none). -->
+	<div class="space-y-3" data-testid="chart-zone">
 		{#if degraded}
-			<div data-testid="degraded-notice" class="max-w-md text-slate-400">
+			<div
+				class="rounded-md border border-dashed border-slate-700 bg-slate-900/40 p-4 text-sm"
+				data-testid="degraded-notice"
+			>
 				<p class="font-medium text-slate-300">Vue timeline (pas de fond de bougies)</p>
-				<p class="mt-1">
-					La fenêtre de ce run n'est pas couverte par <code>candles_5s</code>. Les décisions et
-					ordres s'afficheront sur une timeline (markers — Lot 5) dès que le chart sera en place.
+				<p class="mt-1 text-slate-400">
+					La fenêtre de ce run n'est pas couverte par <code>candles_5s</code>. Le fond OHLC est
+					masqué ; les ordres sont listés ci-dessous sur une timeline.
 				</p>
 			</div>
+
+			{#if data.markers.length > 0}
+				<ol class="space-y-1 text-sm" data-testid="timeline">
+					{#each data.markers as marker (marker.ts + marker.side)}
+						<li class="flex items-center gap-3 font-mono text-slate-300">
+							<span class="text-slate-500">{marker.ts}</span>
+							<span
+								class={marker.side.toLowerCase() === 'buy' ? 'text-emerald-400' : 'text-rose-400'}
+							>
+								{marker.side.toUpperCase()}
+							</span>
+						</li>
+					{/each}
+				</ol>
+			{:else}
+				<p class="text-sm text-slate-500">Aucun ordre enregistré pour ce run.</p>
+			{/if}
 		{:else}
-			<div class="text-slate-400">
-				<p class="font-medium text-slate-300">
-					Fond OHLC disponible · {data.candleCount} bougies ({data.timeframe})
-				</p>
-				<p class="mt-1">Le chart Lightweight Charts (Lot 4) + markers (Lot 5) viennent ici.</p>
+			{#if indicators.length > 0}
+				<IndicatorToggles {indicators} bind:visible />
+			{/if}
+			<div class="h-[360px] overflow-hidden rounded-md border border-slate-800">
+				<Chart candles={data.candles} markers={data.markers} overlays={shownOverlays} />
 			</div>
+			<p class="text-xs text-slate-500">
+				{data.candleCount} bougies ({data.timeframe}) · {data.markers.length} ordres
+			</p>
 		{/if}
 	</div>
 

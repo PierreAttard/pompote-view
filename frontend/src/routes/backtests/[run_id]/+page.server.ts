@@ -4,8 +4,12 @@ import {
 	BackendError,
 	getBacktestRun,
 	getBacktestRunCandles,
-	type BackendConfig
+	getBacktestRunDecisions,
+	getBacktestRunOrders,
+	type BackendConfig,
+	type BacktestCandles
 } from '$lib/server/backend';
+import { decisionsToOverlays, ordersToMarkers } from '$lib/backtest/series';
 import type { PageServerLoad } from './$types';
 
 const DEFAULT_BACKEND_URL = 'http://127.0.0.1:3100';
@@ -33,17 +37,41 @@ export const load: PageServerLoad = async ({ fetch, params }) => {
 		throw error(404, 'Run de backtest introuvable');
 	}
 
-	// Probe candle coverage for the degraded-view decision. Swallow failures:
-	// the run detail is what matters; the chart background is optional.
+	// Fetch the candle background plus the `source` hint. Swallow failures: the
+	// run detail is what matters; the chart background is optional and absent
+	// candles simply degrade to the timeline-only view.
 	let source = 'none';
-	let candleCount = 0;
+	let candles: BacktestCandles['candles'] = [];
 	try {
-		const candles = await getBacktestRunCandles(fetch, config, params.run_id, DEFAULT_TIMEFRAME);
-		source = candles.source;
-		candleCount = candles.candles.length;
+		const probe = await getBacktestRunCandles(fetch, config, params.run_id, DEFAULT_TIMEFRAME);
+		source = probe.source;
+		candles = probe.candles;
 	} catch {
-		// Degraded view: candles unavailable -> keep source='none', candleCount=0.
+		// Degraded view: candles unavailable -> keep source='none', candles=[].
 	}
 
-	return { detail, source, candleCount, timeframe: DEFAULT_TIMEFRAME };
+	// Orders -> buy/sell markers; decision snapshots -> indicator overlays. Both
+	// are best-effort annotations: a failure must not break the detail page.
+	let markers: ReturnType<typeof ordersToMarkers> = [];
+	let overlays: ReturnType<typeof decisionsToOverlays> = [];
+	try {
+		markers = ordersToMarkers(await getBacktestRunOrders(fetch, config, params.run_id));
+	} catch {
+		// Markers unavailable -> chart renders without annotations.
+	}
+	try {
+		overlays = decisionsToOverlays(await getBacktestRunDecisions(fetch, config, params.run_id));
+	} catch {
+		// Overlays unavailable -> chart renders without indicator lines.
+	}
+
+	return {
+		detail,
+		source,
+		candles,
+		candleCount: candles.length,
+		markers,
+		overlays,
+		timeframe: DEFAULT_TIMEFRAME
+	};
 };

@@ -11,9 +11,15 @@
  * client (all endpoints, retries) is issue #16; this module currently covers
  * the backtest run listing needed by #51.
  */
-import type { BacktestCandles, BacktestRunDetail, BacktestRunSummary } from '$lib/api/types';
+import type {
+	BacktestCandles,
+	BacktestOrder,
+	BacktestRunDetail,
+	BacktestRunSummary,
+	Decision
+} from '$lib/api/types';
 
-export type { BacktestCandles, BacktestRunDetail, BacktestRunSummary };
+export type { BacktestCandles, BacktestOrder, BacktestRunDetail, BacktestRunSummary, Decision };
 
 /** Connection config, built from private env by the caller. */
 export interface BackendConfig {
@@ -92,6 +98,36 @@ export async function getBacktestRunCandles(
 	);
 	url.searchParams.set('timeframe', timeframe);
 	return backendGet<BacktestCandles>(fetch, config, url);
+}
+
+/**
+ * Fetches the run's orders (buy/sell), ordered by ascending `market_ts`. These
+ * back the chart's decision markers.
+ */
+export async function getBacktestRunOrders(
+	fetch: typeof globalThis.fetch,
+	config: BackendConfig,
+	runId: string
+): Promise<BacktestOrder[]> {
+	const url = new URL(
+		`${trimBase(config)}/api/v1/monitoring/backtests/${encodeURIComponent(runId)}/orders`
+	);
+	return backendGet<BacktestOrder[]>(fetch, config, url);
+}
+
+/**
+ * Fetches the run's decisions (with their opaque market-context `snapshot`),
+ * ordered by ascending `market_ts`. These back the indicator overlays.
+ */
+export async function getBacktestRunDecisions(
+	fetch: typeof globalThis.fetch,
+	config: BackendConfig,
+	runId: string
+): Promise<Decision[]> {
+	const url = new URL(
+		`${trimBase(config)}/api/v1/monitoring/backtests/${encodeURIComponent(runId)}/decisions`
+	);
+	return backendGet<Decision[]>(fetch, config, url);
 }
 
 function trimBase(config: BackendConfig): string {
