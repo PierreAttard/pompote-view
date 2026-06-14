@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import LiveSelectors, { type ModeFilter } from '$lib/live/LiveSelectors.svelte';
 	import { isRangePreset, presetWindow, type RangePreset } from '$lib/live/range';
+	import { nextQuery } from '$lib/live/url';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -24,11 +25,21 @@
 	const ready = $derived(strategyId !== '' && symbol !== '');
 
 	function update(key: string, value: string | null): void {
-		// Build the next query string from entries (no mutable URLSearchParams
-		// state) and resolve the route so navigation stays base-path-safe.
-		const entries = [...page.url.searchParams].filter(([k]) => k !== key);
-		if (value !== null && value !== '') entries.push([key, value]);
-		const qs = new URLSearchParams(entries).toString();
+		const changes: Record<string, string | null> = { [key]: value };
+		// Switching mode can orphan the selected strategy (not enabled for the new
+		// mode): drop it from the URL so the dropdown and selection stay coherent.
+		if (key === 'mode') {
+			const sel = data.strategies.find((s) => s.id === strategyId);
+			const stillValid =
+				!sel ||
+				value === 'all' ||
+				value === null ||
+				(value === 'paper' ? sel.enabled_paper : sel.enabled_live);
+			if (!stillValid) changes.strategy = null;
+		}
+		// Resolve the route so navigation stays base-path-safe; only a same-origin
+		// query string is appended.
+		const qs = nextQuery(page.url.searchParams, changes);
 		const target = qs ? `${resolve('/live')}?${qs}` : resolve('/live');
 		// Path is already resolved via `resolve('/live')`; only a same-origin query
 		// string is appended, so the navigation is base-path-safe.

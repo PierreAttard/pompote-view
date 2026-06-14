@@ -89,7 +89,7 @@
 	</label>
 
 	<fieldset class="flex flex-col gap-1 text-sm sm:col-span-2">
-		<span class="text-xs text-slate-400">Plage</span>
+		<legend class="text-xs text-slate-400">Plage</legend>
 		<div class="flex flex-wrap gap-2" role="group" aria-label="Plage temporelle">
 			{#each RANGE_PRESETS as p (p.id)}
 				<button
