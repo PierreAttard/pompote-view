@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { depthStatus } from '$lib/live/depth';
 	import { DEFAULT_EXCHANGE, isExchange } from '$lib/live/exchanges';
 	import LiveChart from '$lib/live/LiveChart.svelte';
 	import LiveSelectors, { type ModeFilter } from '$lib/live/LiveSelectors.svelte';
@@ -28,6 +29,11 @@
 	const window = $derived(presetWindow(preset));
 	const selectedStrategy = $derived(data.strategies.find((s) => s.id === strategyId) ?? null);
 	const ready = $derived(strategyId !== '' && symbol !== '');
+
+	// Guard the backend's 5000-point cap on the UI: when the (timeframe, range)
+	// pair would overflow, we refuse to fire the candles query (it would 400
+	// anyway) and suggest the finest timeframe that fits.
+	const depth = $derived(depthStatus(preset, timeframe, data.timeframes));
 
 	function update(key: string, value: string | null): void {
 		const changes: Record<string, string | null> = { [key]: value };
@@ -82,7 +88,32 @@
 
 	<!-- Chart zone. Decision markers/overlays + 10s polling plug into LiveChart
 	     in later lots; #18 wires the candles fetch + native zoom/pan. -->
-	{#if ready}
+	{#if ready && depth.exceeds}
+		<div
+			class="space-y-2 rounded-md border border-amber-700/60 bg-amber-950/30 p-4 text-sm"
+			data-testid="live-depth-warning"
+			role="alert"
+		>
+			<p class="text-amber-200">
+				Plage trop large pour ce timeframe. Réduisez la plage ou augmentez le timeframe.
+			</p>
+			<p class="text-xs text-amber-300/80">
+				~{depth.count?.toLocaleString('fr-FR')} points demandés, au-delà du plafond de {(5000).toLocaleString(
+					'fr-FR'
+				)}.
+			</p>
+			{#if depth.suggestion}
+				<button
+					type="button"
+					data-testid="live-depth-suggestion"
+					onclick={() => update('timeframe', depth.suggestion)}
+					class="rounded-md border border-amber-600 bg-amber-900/40 px-3 py-1.5 text-amber-100 transition-colors hover:bg-amber-800/50"
+				>
+					Passer en {depth.suggestion}
+				</button>
+			{/if}
+		</div>
+	{:else if ready}
 		<div data-testid="live-chart-header" class="text-sm text-slate-300">
 			<span class="font-medium">{selectedStrategy?.name ?? strategyId}</span>
 			<span class="text-slate-500"> · {exchange} · {symbol} · {timeframe}</span>
