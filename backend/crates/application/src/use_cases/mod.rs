@@ -4,6 +4,7 @@ pub mod backtests;
 pub mod candles;
 pub mod orders;
 pub mod readiness;
+pub mod strategies;
 
 pub use backtests::{
     BacktestCandleSource, BacktestCandles, GetBacktestCandlesError, GetBacktestError,
@@ -13,3 +14,4 @@ pub use backtests::{
 pub use candles::{CandleSeries, GetCandles, GetCandlesError, GetCandlesInput};
 pub use orders::{GetOrders, GetOrdersError, GetOrdersInput, OrderSeries};
 pub use readiness::{ReadinessOutcome, ReadinessProbe};
+pub use strategies::{GetStrategyFills, GetStrategyFillsInput, ListStrategies, StrategyError};

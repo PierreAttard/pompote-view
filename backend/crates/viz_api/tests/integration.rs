@@ -38,10 +38,11 @@ use adapters::inbound::http::{AppState, build_router, openapi_router};
 use adapters::outbound::clock::SystemClock;
 use adapters::outbound::persistence::{
     SqlxBacktestRepository, SqlxCandleRepository, SqlxHealthChecker, SqlxOrderRepository,
+    SqlxStrategyRepository,
 };
 use application::use_cases::{
     GetBacktestRun, GetBacktestRunCandles, GetBacktestRunMetrics, GetBacktestSeries, GetCandles,
-    GetOrders, ListBacktestRuns, ReadinessProbe,
+    GetOrders, GetStrategyFills, ListBacktestRuns, ListStrategies, ReadinessProbe,
 };
 use axum::Router;
 use sqlx::PgPool;
@@ -53,6 +54,7 @@ use tokio::net::TcpListener;
 
 const API_KEY: &str = "integration-test-key-0123456789";
 const RUN_ID: &str = "11111111-1111-1111-1111-111111111111";
+const STRATEGY_ID: &str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
 /// Owned test context: the container (kept alive for the whole test) and a
 /// client pointed at the running server.
@@ -225,6 +227,16 @@ async fn seed(pool: &PgPool) {
     .execute(pool)
     .await
     .expect("seed fills");
+
+    // A live strategy row for the /strategies selector (paper-enabled, live-off).
+    sqlx::query(
+        "INSERT INTO strategies (id, name, kind, enabled_paper, enabled_live, config) VALUES \
+         ($1::uuid, 'it_strategy', 'directional', true, false, '{}'::jsonb)",
+    )
+    .bind(STRATEGY_ID)
+    .execute(pool)
+    .await
+    .expect("seed strategy");
 }
 
 /// Wires the real composition root over the test pool (mirrors `main.rs`).
@@ -235,7 +247,8 @@ fn build_app(pool: PgPool) -> Router {
     ))));
     let candle_repo = Arc::new(SqlxCandleRepository::new(pool.clone()));
     let order_repo = Arc::new(SqlxOrderRepository::new(pool.clone()));
-    let backtest_repo = Arc::new(SqlxBacktestRepository::new(pool));
+    let backtest_repo = Arc::new(SqlxBacktestRepository::new(pool.clone()));
+    let strategy_repo = Arc::new(SqlxStrategyRepository::new(pool));
     let get_candles = Arc::new(GetCandles::new(candle_repo, clock.clone()));
     let state = AppState {
         readiness,
@@ -244,12 +257,14 @@ fn build_app(pool: PgPool) -> Router {
         get_orders: Arc::new(GetOrders::new(order_repo, clock.clone())),
         list_backtest_runs: Arc::new(ListBacktestRuns::new(backtest_repo.clone())),
         get_backtest_run: Arc::new(GetBacktestRun::new(backtest_repo.clone())),
-        get_backtest_series: Arc::new(GetBacktestSeries::new(backtest_repo.clone(), clock)),
+        get_backtest_series: Arc::new(GetBacktestSeries::new(backtest_repo.clone(), clock.clone())),
         get_backtest_candles: Arc::new(GetBacktestRunCandles::new(
             backtest_repo.clone(),
             get_candles,
         )),
         get_backtest_metrics: Arc::new(GetBacktestRunMetrics::new(backtest_repo)),
+        list_strategies: Arc::new(ListStrategies::new(strategy_repo.clone())),
+        get_strategy_fills: Arc::new(GetStrategyFills::new(strategy_repo, clock)),
     };
     build_router(state).merge(openapi_router(false))
 }
@@ -285,6 +300,45 @@ async fn endpoint_suite() {
     openapi_spec(&ctx).await;
     candles_endpoint(&ctx).await;
     backtest_endpoints(&ctx).await;
+    strategy_endpoints(&ctx).await;
+}
+
+/// Live Lot 1 utility endpoints: timeframes, strategies (with mode flags) and
+/// the strategy fills series (#11).
+async fn strategy_endpoints(ctx: &TestCtx) {
+    // Timeframes: static whitelist.
+    let resp = get(ctx, "/api/v1/monitoring/timeframes").await;
+    assert_eq!(resp.status(), 200, "timeframes");
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let tfs = body.as_array().expect("array");
+    assert!(tfs.contains(&serde_json::json!("1h")));
+
+    // Strategies selector: the seeded row, with its paper/live flags.
+    let resp = get(ctx, "/api/v1/monitoring/strategies").await;
+    assert_eq!(resp.status(), 200, "strategies");
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let arr = body.as_array().expect("array");
+    let found = arr
+        .iter()
+        .find(|s| s["id"] == STRATEGY_ID)
+        .expect("seeded strategy present");
+    assert_eq!(found["name"], "it_strategy");
+    assert_eq!(found["enabled_paper"], true);
+    assert_eq!(found["enabled_live"], false);
+
+    // Fills series: no live fills seeded -> empty array, but the query runs
+    // against the real schema (drift detection on `fills`/`executed_at`).
+    let resp = get(
+        ctx,
+        &format!(
+            "/api/v1/monitoring/strategies/{STRATEGY_ID}/fills\
+             ?from=2026-06-01T00:00:00Z&to=2026-06-01T03:00:00Z"
+        ),
+    )
+    .await;
+    assert_eq!(resp.status(), 200, "strategy fills");
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body.as_array().expect("array").is_empty());
 }
 
 async fn health_and_auth(ctx: &TestCtx) {

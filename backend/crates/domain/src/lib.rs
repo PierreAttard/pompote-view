@@ -30,3 +30,4 @@ pub mod candle;
 pub mod decision;
 pub mod fill;
 pub mod order;
+pub mod strategy;

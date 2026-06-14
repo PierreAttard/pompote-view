@@ -8,6 +8,7 @@ pub mod openapi;
 pub mod orders;
 pub mod router;
 pub mod state;
+pub mod strategies;
 
 pub use openapi::{ApiDoc, openapi_pretty_json, openapi_router};
 pub use router::build_router;

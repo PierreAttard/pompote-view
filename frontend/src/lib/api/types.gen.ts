@@ -140,6 +140,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/monitoring/strategies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Handler for `GET /api/v1/monitoring/strategies`. */
+        get: operations["list_strategies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/monitoring/strategies/{id}/fills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Handler for `GET /api/v1/monitoring/strategies/{id}/fills`. */
+        get: operations["get_strategy_fills"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/monitoring/strategies/{id}/orders": {
         parameters: {
             query?: never;
@@ -149,6 +183,23 @@ export interface paths {
         };
         /** Handler for `GET /api/v1/monitoring/strategies/{id}/orders`. */
         get: operations["get_orders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/monitoring/timeframes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Handler for `GET /api/v1/monitoring/timeframes`. */
+        get: operations["get_timeframes"];
         put?: never;
         post?: never;
         delete?: never;
@@ -479,6 +530,51 @@ export interface components {
              */
             side: string;
         };
+        /** @description A live fill (execution marker). */
+        LiveFillDto: {
+            /**
+             * Format: date-time
+             * @description Wall-clock execution time (RFC3339).
+             */
+            executed_at: string;
+            /**
+             * Format: double
+             * @description Fee charged for this fill.
+             */
+            fee: number;
+            /**
+             * @description Asset the fee was charged in.
+             * @example USDT
+             */
+            fee_asset: string;
+            /**
+             * Format: uuid
+             * @description Primary key.
+             */
+            fill_id: string;
+            /** @description Whether this fill is paper trading. */
+            is_paper: boolean;
+            /**
+             * Format: uuid
+             * @description Order that produced this fill.
+             */
+            order_id: string;
+            /**
+             * Format: double
+             * @description Execution price.
+             */
+            price: number;
+            /**
+             * Format: double
+             * @description Executed base-asset quantity.
+             */
+            quantity: number;
+            /**
+             * @description `buy` or `sell`.
+             * @example buy
+             */
+            side: string;
+        };
         /**
          * @description HTTP DTO returned in the JSON array for the orders endpoint.
          *
@@ -544,6 +640,36 @@ export interface components {
             /** @description Human-readable explanation (optional). */
             message?: string | null;
             /** @description Echoes the caller-supplied row count for `too_many_rows`. */
+            requested?: number | null;
+        };
+        /** @description A strategy row (selector item). */
+        StrategyDto: {
+            /** @description Whether the strategy is enabled for live trading. */
+            enabled_live: boolean;
+            /** @description Whether the strategy is enabled for paper trading. */
+            enabled_paper: boolean;
+            /**
+             * Format: uuid
+             * @description Primary key.
+             */
+            id: string;
+            /**
+             * @description Strategy kind/family.
+             * @example directional
+             */
+            kind: string;
+            /** @description Unique human-readable name. */
+            name: string;
+        };
+        /** @description JSON error body for the strategy endpoints. */
+        StrategyErrorBody: {
+            /** @description Machine-readable error discriminator. */
+            error: string;
+            /** @description Maximum row count for `too_many_rows`. */
+            max?: number | null;
+            /** @description Human-readable explanation. */
+            message?: string | null;
+            /** @description Echoes the requested row count for `too_many_rows`. */
             requested?: number | null;
         };
     };
@@ -1060,6 +1186,115 @@ export interface operations {
             };
         };
     };
+    list_strategies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every strategy, ordered by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyDto"][];
+                };
+            };
+            /** @description Missing or invalid `X-API-Key` header. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unexpected internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyErrorBody"];
+                };
+            };
+            /** @description Datastore temporarily unreachable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyErrorBody"];
+                };
+            };
+        };
+    };
+    get_strategy_fills: {
+        parameters: {
+            query: {
+                /** @description Inclusive lower bound on `executed_at` (RFC3339). */
+                from: string;
+                /** @description Exclusive upper bound on `executed_at` (RFC3339). Defaults to `Clock::now()`. */
+                to?: string | null;
+                /** @description Row cap (defaults to [`MAX_ORDER_ROWS`], rejected above it). */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description Strategy identifier */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live fills for the strategy on the window, ordered by ascending `executed_at`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveFillDto"][];
+                };
+            };
+            /** @description Invalid range or limit out of bounds. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyErrorBody"];
+                };
+            };
+            /** @description Missing or invalid `X-API-Key` header. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unexpected internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyErrorBody"];
+                };
+            };
+            /** @description Datastore temporarily unreachable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyErrorBody"];
+                };
+            };
+        };
+    };
     get_orders: {
         parameters: {
             query: {
@@ -1121,6 +1356,33 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OrderErrorBody"];
                 };
+            };
+        };
+    };
+    get_timeframes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Allowed aggregation timeframes (finest to coarsest). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            /** @description Missing or invalid `X-API-Key` header. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

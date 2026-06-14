@@ -11,7 +11,9 @@
 
 use axum::{Router, http::StatusCode, middleware, routing::get};
 
-use super::{api_key::require_api_key, backtests, candles, handlers, orders, state::AppState};
+use super::{
+    api_key::require_api_key, backtests, candles, handlers, orders, state::AppState, strategies,
+};
 
 /// Builds the top-level axum router with the shared [`AppState`] attached.
 ///
@@ -23,7 +25,13 @@ use super::{api_key::require_api_key, backtests, candles, handlers, orders, stat
 pub fn build_router(state: AppState) -> Router {
     let monitoring_router: Router<AppState> = Router::new()
         .route("/candles", get(candles::get_candles))
+        .route("/timeframes", get(strategies::get_timeframes))
+        .route("/strategies", get(strategies::list_strategies))
         .route("/strategies/{id}/orders", get(orders::get_orders))
+        .route(
+            "/strategies/{id}/fills",
+            get(strategies::get_strategy_fills),
+        )
         .route("/backtests", get(backtests::list_backtests))
         .route("/backtests/{run_id}", get(backtests::get_backtest))
         .route(
@@ -135,6 +143,8 @@ mod tests {
             get_backtest_candles,
             get_backtest_metrics,
         ) = super::super::state::test_support::stub_backtest_use_cases();
+        let (list_strategies, get_strategy_fills) =
+            super::super::state::test_support::stub_strategy_use_cases();
         AppState {
             readiness: Arc::new(ReadinessProbe::new(Arc::new(AlwaysOk))),
             api_key: Arc::new(b"dev-key-please-change-0123".to_vec()),
@@ -148,6 +158,8 @@ mod tests {
             get_backtest_series,
             get_backtest_candles,
             get_backtest_metrics,
+            list_strategies,
+            get_strategy_fills,
         }
     }
 

@@ -813,6 +813,168 @@
         ]
       }
     },
+    "/api/v1/monitoring/strategies": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Handler for `GET /api/v1/monitoring/strategies`.",
+        "operationId": "list_strategies",
+        "responses": {
+          "200": {
+            "description": "Every strategy, ordered by name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StrategyDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` header."
+          },
+          "500": {
+            "description": "Unexpected internal error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Datastore temporarily unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "x_api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/strategies/{id}/fills": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Handler for `GET /api/v1/monitoring/strategies/{id}/fills`.",
+        "operationId": "get_strategy_fills",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Strategy identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive lower bound on `executed_at` (RFC3339).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive upper bound on `executed_at` (RFC3339). Defaults to `Clock::now()`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Row cap (defaults to [`MAX_ORDER_ROWS`], rejected above it).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live fills for the strategy on the window, ordered by ascending `executed_at`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LiveFillDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid range or limit out of bounds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` header."
+          },
+          "500": {
+            "description": "Unexpected internal error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Datastore temporarily unreachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "x_api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/monitoring/strategies/{id}/orders": {
       "get": {
         "tags": [
@@ -914,6 +1076,38 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "x_api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/monitoring/timeframes": {
+      "get": {
+        "tags": [
+          "monitoring"
+        ],
+        "summary": "Handler for `GET /api/v1/monitoring/timeframes`.",
+        "operationId": "get_timeframes",
+        "responses": {
+          "200": {
+            "description": "Allowed aggregation timeframes (finest to coarsest).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid `X-API-Key` header."
           }
         },
         "security": [
@@ -1415,6 +1609,67 @@
           }
         }
       },
+      "LiveFillDto": {
+        "type": "object",
+        "description": "A live fill (execution marker).",
+        "required": [
+          "fill_id",
+          "order_id",
+          "side",
+          "price",
+          "quantity",
+          "fee",
+          "fee_asset",
+          "executed_at",
+          "is_paper"
+        ],
+        "properties": {
+          "executed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Wall-clock execution time (RFC3339)."
+          },
+          "fee": {
+            "type": "number",
+            "format": "double",
+            "description": "Fee charged for this fill."
+          },
+          "fee_asset": {
+            "type": "string",
+            "description": "Asset the fee was charged in.",
+            "example": "USDT"
+          },
+          "fill_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Primary key."
+          },
+          "is_paper": {
+            "type": "boolean",
+            "description": "Whether this fill is paper trading."
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Order that produced this fill."
+          },
+          "price": {
+            "type": "number",
+            "format": "double",
+            "description": "Execution price."
+          },
+          "quantity": {
+            "type": "number",
+            "format": "double",
+            "description": "Executed base-asset quantity."
+          },
+          "side": {
+            "type": "string",
+            "description": "`buy` or `sell`.",
+            "example": "buy"
+          }
+        }
+      },
       "OrderDto": {
         "type": "object",
         "description": "HTTP DTO returned in the JSON array for the orders endpoint.\n\n`Decimal -> f64` happens at this boundary only (see candles handler\nrationale). For OHLC magnitudes the worst-case relative error\n(~2.2e-16) is invisible at chart pixel resolution; the full-precision\n`Decimal` stays in the domain and persistence layers.",
@@ -1509,6 +1764,77 @@
               "null"
             ],
             "description": "Echoes the caller-supplied row count for `too_many_rows`.",
+            "minimum": 0
+          }
+        }
+      },
+      "StrategyDto": {
+        "type": "object",
+        "description": "A strategy row (selector item).",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "enabled_paper",
+          "enabled_live"
+        ],
+        "properties": {
+          "enabled_live": {
+            "type": "boolean",
+            "description": "Whether the strategy is enabled for live trading."
+          },
+          "enabled_paper": {
+            "type": "boolean",
+            "description": "Whether the strategy is enabled for paper trading."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Primary key."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Strategy kind/family.",
+            "example": "directional"
+          },
+          "name": {
+            "type": "string",
+            "description": "Unique human-readable name."
+          }
+        }
+      },
+      "StrategyErrorBody": {
+        "type": "object",
+        "description": "JSON error body for the strategy endpoints.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Machine-readable error discriminator."
+          },
+          "max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum row count for `too_many_rows`.",
+            "minimum": 0
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable explanation."
+          },
+          "requested": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Echoes the requested row count for `too_many_rows`.",
             "minimum": 0
           }
         }
