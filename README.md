@@ -58,6 +58,8 @@ docker compose --env-file .env.local up
 4. `frontend` démarre quand le backend est *healthy* ; la clé API reste **côté serveur** (le navigateur n'appelle que le proxy SvelteKit `/api/*`).
 
 > La DB locale démarre **vide** : tout le schéma provient des migrations `robot_rust`. Sans checkout valide (`ROBOT_RUST_PATH`), le service `migrate` échoue volontairement avec un message clair.
+>
+> Le volume Timescale **persiste** entre les `up`/`down` : `migrate` ne rejoue les migrations que sur une base vierge (sinon il les saute et sort proprement). Pour repartir d'une base propre : `docker compose down -v`.
 
 ## Garde-fous
 

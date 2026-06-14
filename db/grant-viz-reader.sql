@@ -4,12 +4,14 @@
 -- backend must only ever hold SELECT. No robot_rust schema lives in this repo —
 -- the tables are created by robot_rust's bind-mounted migrations beforehand.
 --
--- `:'reader_password'` is the psql-quoted value of the `-v reader_password=…`
--- passed by migrate.sh. Idempotent: safe to re-run against a persistent volume.
+-- The password comes from `-v reader_password=…` (migrate.sh). `quote_literal`
+-- wraps it in single quotes *inside the generated command* — `:'reader_password'`
+-- alone would be absorbed by the surrounding string and emit an unquoted, invalid
+-- `PASSWORD viz_reader`. Idempotent: safe to re-run against a persistent volume.
 
 -- Create the LOGIN role only if it does not already exist (psql \gexec idiom;
 -- variable substitution does not happen inside DO/$$ blocks, hence \gexec).
-SELECT 'CREATE ROLE pompote_viz_reader LOGIN PASSWORD ' || :'reader_password'
+SELECT 'CREATE ROLE pompote_viz_reader LOGIN PASSWORD ' || quote_literal(:'reader_password')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pompote_viz_reader')
 \gexec
 
